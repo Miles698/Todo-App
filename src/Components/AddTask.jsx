@@ -58,7 +58,10 @@ export default function AddTask({ tasks, setTasks }) {
   };
 
   const handleAddClick = () => {
-    if (!task.trim()) return;
+    if (!task.trim()) {
+      alert("Please enter a task title.");
+      return;
+    }
 
     const extractedProject = extractProjectFromTask(task);
     const cleanedTask = task.replace(/#\w+/, "").trim();
@@ -122,16 +125,13 @@ export default function AddTask({ tasks, setTasks }) {
     <div className="add-task-wrapper">
       <h2 className="heading">Today</h2>
       {tasks.length > 0 && (
-        <p className="task-count">
-          {tasks.length} task{tasks.length !== 1 ? "s" : ""}
-        </p>
+        <p className="task-count">{tasks.length} task{tasks.length !== 1 ? "s" : ""}</p>
       )}
 
       <div className="task-list">
         {tasks.map((t, index) => (
           <div key={t.id} className="task-item-wrapper">
             <div className="task-item">
-              {/* Checkbox removed */}
               <span
                 className="task-title"
                 onClick={() => {
@@ -157,7 +157,6 @@ export default function AddTask({ tasks, setTasks }) {
                 <i
                   className="pi pi-pencil"
                   title="Edit"
-                  style={{ cursor: "pointer" }}
                   onClick={() => {
                     setTask(t.title + " #" + t.project);
                     setDescription(t.description);
@@ -184,13 +183,11 @@ export default function AddTask({ tasks, setTasks }) {
                 <i
                   className="pi pi-calendar"
                   title="Change Date"
-                  style={{ cursor: "pointer" }}
                   onClick={() => toggleTaskProperty(index, "showDateEditor")}
                 />
                 <i
                   className="pi pi-comment"
                   title="Toggle Comments"
-                  style={{ cursor: "pointer" }}
                   onClick={() => toggleTaskProperty(index, "showComments")}
                 />
               </div>

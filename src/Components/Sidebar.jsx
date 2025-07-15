@@ -28,11 +28,7 @@ const Sidebar = ({ tasks, onOpenSearch, activeTab, setActiveTab, onToggleNotific
     <div className="sidebar">
       {/* 🔝 Top Section */}
       <div className="sidebar-top">
-        <Avatar
-          image="https://primefaces.org/cdn/primereact/images/avatar/amyelsner.png"
-          shape="circle"
-          size="large"
-        />
+        <Avatar label="M" shape="circle" size="large" />
         <span className="username">Miles AyKays</span>
         <Button
           icon="pi pi-bell"

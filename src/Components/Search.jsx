@@ -1,20 +1,21 @@
-// Components/SearchOverlay.jsx
-import React from "react";
+import React, { useState } from "react";
 import { InputText } from "primereact/inputtext";
 import { Calendar } from "primereact/calendar";
-import "./SearchOverlay.css";
+import "./Search.css";
 
-const SearchOverlay = ({ visible, onClose, tasks }) => {
-  const [searchText, setSearchText] = React.useState("");
-  const [selectedDate, setSelectedDate] = React.useState(null);
+const Search = ({ visible, onClose, tasks }) => {
+  const [searchText, setSearchText] = useState("");
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const filteredTasks = tasks.filter((t) => {
     const matchText =
       t.title.toLowerCase().includes(searchText.toLowerCase()) ||
       t.project.toLowerCase().includes(searchText.toLowerCase());
+
     const matchDate = selectedDate
       ? new Date(t.date).toLocaleDateString() === selectedDate.toLocaleDateString()
       : true;
+
     return matchText && matchDate;
   });
 
@@ -44,15 +45,19 @@ const SearchOverlay = ({ visible, onClose, tasks }) => {
         />
 
         <ul className="search-results">
-          {filteredTasks.map((t) => (
-            <li key={t.id}>
-              <strong>{t.title}</strong> – #{t.project} – {t.date}
-            </li>
-          ))}
+          {filteredTasks.length > 0 ? (
+            filteredTasks.map((t) => (
+              <li key={t.id}>
+                <strong>{t.title}</strong> – #{t.project} – {t.date}
+              </li>
+            ))
+          ) : (
+            <li style={{ fontStyle: "italic", color: "#888" }}>No matching tasks found.</li>
+          )}
         </ul>
       </div>
     </div>
   );
 };
 
-export default SearchOverlay;
+export default Search;

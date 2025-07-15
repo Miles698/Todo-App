@@ -1,0 +1,51 @@
+.search-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 5%;
+  z-index: 999;
+}
+
+.search-panel {
+  background-color: #fff;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.search-input,
+.calendar-search {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.search-results {
+  list-style: none;
+  padding-left: 0;
+}
+
+.search-results li {
+  margin-bottom: 0.75rem;
+}
+
+.search-date-label {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 0.5rem;
+}

@@ -7,28 +7,27 @@ import { Calendar } from "primereact/calendar";
 import { Menu } from "primereact/menu";
 import { Divider } from "primereact/divider";
 import "./AddTask.css";
+import DescriptionOverlay from "./DescriptionOverlay";
 
-export default function AddTask() {
+export default function AddTask({ tasks, setTasks }) {
   const [task, setTask] = useState("");
   const [description, setDescription] = useState("");
-  const [tasks, setTasks] = useState([]);
-
-  const [dueDate, setDueDate] = useState("Today");
+  const [dueDate, setDueDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
-
   const [priority, setPriority] = useState({ level: 4, label: "⚪ Priority 4" });
   const [reminder, setReminder] = useState(null);
   const [reminderTime, setReminderTime] = useState(null);
-
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [project, setProject] = useState("Inbox");
-
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
 
   const menu = useRef(null);
   const reminderMenu = useRef(null);
+
+  const [descOverlayVisible, setDescOverlayVisible] = useState(false);
+  const [currentDescription, setCurrentDescription] = useState("");
 
   const priorityOptions = [
     { label: "🔴 Priority 1", command: () => setPriority({ level: 1, label: "🔴 Priority 1" }) },
@@ -38,7 +37,11 @@ export default function AddTask() {
   ];
 
   const reminderOptions = [
-    { label: "Set date and time", icon: "pi pi-calendar", command: () => setReminder("datetime") },
+    {
+      label: "Set date and time",
+      icon: "pi pi-calendar",
+      command: () => setReminder("datetime"),
+    },
     {
       label: "Before task",
       icon: "pi pi-clock",
@@ -65,9 +68,14 @@ export default function AddTask() {
       title: cleanedTask,
       description,
       project: extractedProject,
-      date: dueDate,
+      date: dueDate.toISOString(),
       priority,
-      reminder: reminder === "datetime" ? reminderTime?.toLocaleString() : reminderTime,
+      reminder:
+        reminder === "datetime"
+          ? reminderTime?.toISOString()
+          : reminder === "before"
+          ? "10 minutes before"
+          : null,
       showDescription: false,
       showDateEditor: false,
       showComments: false,
@@ -83,25 +91,18 @@ export default function AddTask() {
       setTasks((prev) => [...prev, newTask]);
     }
 
-    // Reset form
     setTask("");
     setDescription("");
     setPriority({ level: 4, label: "⚪ Priority 4" });
     setReminder(null);
     setReminderTime(null);
-    setDueDate("Today");
+    setDueDate(new Date());
     setShowCalendar(false);
     setShowForm(false);
     setEditingProject(false);
     setProject("Inbox");
     setIsEditing(false);
     setEditTaskIndex(null);
-  };
-
-  const handleRemoveTask = (index) => {
-    const updated = [...tasks];
-    updated.splice(index, 1);
-    setTasks(updated);
   };
 
   const toggleTaskProperty = (index, property) => {
@@ -112,7 +113,7 @@ export default function AddTask() {
 
   const updateTaskDate = (index, newDate) => {
     const updated = [...tasks];
-    updated[index].date = newDate.toLocaleDateString();
+    updated[index].date = newDate.toISOString();
     updated[index].showDateEditor = false;
     setTasks(updated);
   };
@@ -121,23 +122,34 @@ export default function AddTask() {
     <div className="add-task-wrapper">
       <h2 className="heading">Today</h2>
       {tasks.length > 0 && (
-        <p className="task-count">{tasks.length} task{tasks.length !== 1 ? "s" : ""}</p>
+        <p className="task-count">
+          {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+        </p>
       )}
 
       <div className="task-list">
         {tasks.map((t, index) => (
           <div key={t.id} className="task-item-wrapper">
             <div className="task-item">
-              <input type="checkbox" onChange={() => handleRemoveTask(index)} />
+              {/* Checkbox removed */}
               <span
                 className="task-title"
-                onClick={() => toggleTaskProperty(index, "showDescription")}
+                onClick={() => {
+                  if (t.description) {
+                    setCurrentDescription(t.description);
+                    setDescOverlayVisible(true);
+                  }
+                }}
                 style={{ cursor: "pointer" }}
               >
                 {t.title}
                 <div className="task-meta">
-                  {t.date} • #{t.project} • {t.priority.label}
-                  {t.reminder && ` • ⏰ ${t.reminder}`}
+                  {new Date(t.date).toLocaleDateString()} • #{t.project} • {t.priority.label}
+                  {t.reminder && ` • ⏰ ${
+                    t.reminder === "10 minutes before"
+                      ? t.reminder
+                      : new Date(t.reminder).toLocaleString()
+                  }`}
                 </div>
               </span>
 
@@ -149,10 +161,20 @@ export default function AddTask() {
                   onClick={() => {
                     setTask(t.title + " #" + t.project);
                     setDescription(t.description);
-                    setDueDate(t.date);
+                    setDueDate(new Date(t.date));
                     setPriority(t.priority);
-                    setReminder(t.reminder ? "before" : null);
-                    setReminderTime(t.reminder);
+                    setReminder(
+                      t.reminder === "10 minutes before"
+                        ? "before"
+                        : t.reminder
+                        ? "datetime"
+                        : null
+                    );
+                    setReminderTime(
+                      t.reminder && t.reminder !== "10 minutes before"
+                        ? new Date(t.reminder)
+                        : null
+                    );
                     setProject(t.project);
                     setIsEditing(true);
                     setEditTaskIndex(index);
@@ -184,12 +206,6 @@ export default function AddTask() {
               </div>
             )}
 
-            {t.showDescription && t.description && (
-              <div style={{ marginLeft: "2rem", marginTop: "0.5rem", fontSize: "14px", color: "#444" }}>
-                {t.description}
-              </div>
-            )}
-
             {t.showComments && (
               <div style={{ marginLeft: "2rem", marginTop: "0.5rem", width: "100%" }}>
                 <InputText
@@ -210,14 +226,13 @@ export default function AddTask() {
                   }}
                   style={{ width: "100%" }}
                 />
-                <ul style={{ paddingLeft: "1rem", fontSize: "14px", color: "#444", marginTop: "0.5rem" }}>
+                <ul style={{ paddingLeft: "1rem", fontSize: "14px", marginTop: "0.5rem" }}>
                   {t.comments.map((comment, i) => (
                     <li key={i}>– {comment}</li>
                   ))}
                 </ul>
               </div>
             )}
-
             <Divider />
           </div>
         ))}
@@ -239,7 +254,6 @@ export default function AddTask() {
             placeholder="e.g. Read book #Personal"
             className="task-input"
           />
-
           <InputTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -252,7 +266,7 @@ export default function AddTask() {
           <div className="task-tags">
             {!showCalendar ? (
               <Chip
-                label={dueDate}
+                label={dueDate.toLocaleDateString()}
                 removable
                 onRemove={() => setShowCalendar(true)}
                 icon="pi pi-calendar"
@@ -260,9 +274,9 @@ export default function AddTask() {
               />
             ) : (
               <Calendar
-                value={dueDate !== "Today" ? new Date(dueDate) : null}
+                value={dueDate}
                 onChange={(e) => {
-                  setDueDate(e.value.toLocaleDateString());
+                  setDueDate(e.value);
                   setShowCalendar(false);
                 }}
                 showIcon
@@ -319,9 +333,10 @@ export default function AddTask() {
                   onBlur={() => setEditingProject(false)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
+                      setProject(e.target.value);
                       setTask((prev) => {
                         const clean = prev.replace(/#\w+/, "").trim();
-                        return clean + " #" + project;
+                        return clean + " #" + e.target.value;
                       });
                       setEditingProject(false);
                     }
@@ -340,8 +355,11 @@ export default function AddTask() {
                   setDescription("");
                   setReminder(null);
                   setReminderTime(null);
+                  setDueDate(new Date());
+                  setPriority({ level: 4, label: "⚪ Priority 4" });
                   setShowForm(false);
                   setEditingProject(false);
+                  setProject("Inbox");
                   setIsEditing(false);
                   setEditTaskIndex(null);
                 }}
@@ -355,6 +373,12 @@ export default function AddTask() {
           </div>
         </div>
       )}
+
+      <DescriptionOverlay
+        visible={descOverlayVisible}
+        description={currentDescription}
+        onClose={() => setDescOverlayVisible(false)}
+      />
     </div>
   );
 }

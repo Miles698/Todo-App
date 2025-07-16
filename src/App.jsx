@@ -4,7 +4,6 @@ import Sidebar from "./Components/Sidebar";
 import { Button } from "primereact/button";
 import { Dialog } from "primereact/dialog";
 import { InputText } from "primereact/inputtext";
-import { Checkbox } from "primereact/checkbox";
 import { Calendar } from "primereact/calendar";
 import LabelsFeaturesSection from "./Components/LabelsFeaturesSection";
 import "./App.css";
@@ -13,13 +12,10 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchDate, setSearchDate] = useState(null);
   const [activeTab, setActiveTab] = useState("Add Task");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  const [inboxInput, setInboxInput] = useState("");
-  const [inboxTime, setInboxTime] = useState(null);
-
-  // 📌 Date checks
   const isToday = (isoDateStr) => {
     const date = new Date(isoDateStr);
     const today = new Date();
@@ -36,53 +32,32 @@ export default function App() {
     return taskDate > today;
   };
 
-  // 📂 Filter tasks by tab
   const todayTasks = tasks.filter(
     (t) => t.date && isToday(t.date) && !t.completed
   );
   const upcomingTasks = tasks.filter(
     (t) => t.date && isFutureDate(t.date) && !t.completed
   );
-  const inboxTasks = tasks.filter(
-    (t) =>
-      (!t.date || t.project === "Inbox") &&
-      !isToday(t.date) &&
-      !isFutureDate(t.date) &&
-      !t.completed
-  );
+  const inboxTasks = tasks
+    .filter((t) => t.project === "#Inbox" && !t.completed)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
   const completedTasks = tasks.filter((t) => t.completed);
 
   const filteredTasks = tasks.filter((t) => {
     const lower = searchQuery.toLowerCase();
-    return (
+    const matchText =
       t.title.toLowerCase().includes(lower) ||
       t.project.toLowerCase().includes(lower) ||
-      (t.date && t.date.toLowerCase().includes(lower))
-    );
+      (t.date && t.date.toLowerCase().includes(lower));
+
+    const matchDate = searchDate
+      ? new Date(t.date).toDateString() === searchDate.toDateString()
+      : true;
+
+    return matchText && matchDate;
   });
 
-  // ✅ Handle inbox message send
-  const handleSendInboxMessage = () => {
-    if (!inboxInput.trim() || !inboxTime) return;
-
-    const newTask = {
-      id: Date.now(),
-      title: inboxInput.trim(),
-      description: "",
-      project: "Inbox",
-      date: inboxTime.toISOString(),
-      reminder: inboxTime.toISOString(),
-      priority: { level: 4, label: "⚪ Priority 4" },
-      notified: false,
-      completed: false,
-    };
-
-    setTasks((prev) => [...prev, newTask]);
-    setInboxInput("");
-    setInboxTime(null);
-  };
-
-  const handleCheckboxChange = (id) => {
+  const handleCompleteTask = (id) => {
     setTasks((prev) =>
       prev.map((task) =>
         task.id === id ? { ...task, completed: !task.completed } : task
@@ -90,11 +65,9 @@ export default function App() {
     );
   };
 
-  // 🔔 Notification logic
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
-
       tasks.forEach((task) => {
         if (
           task.reminder &&
@@ -103,18 +76,14 @@ export default function App() {
           new Date(task.reminder).getTime() <= now.getTime()
         ) {
           if (Notification.permission === "granted") {
-            new Notification("📬 Reminder", {
-              body: task.title,
-            });
+            new Notification("📬 Reminder", { body: task.title });
           }
-
           setTasks((prev) =>
             prev.map((t) => (t.id === task.id ? { ...t, notified: true } : t))
           );
         }
       });
-    }, 30000); // every 30s
-
+    }, 30000);
     return () => clearInterval(interval);
   }, [tasks]);
 
@@ -132,6 +101,9 @@ export default function App() {
         onToggleNotifications={() => setNotificationsOpen((prev) => !prev)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        todayCount={todayTasks.length}
+        upcomingCount={upcomingTasks.length}
+        completedCount={completedTasks.length}
       />
 
       <div
@@ -165,7 +137,11 @@ export default function App() {
         </div>
 
         {activeTab === "Add Task" && (
-          <AddTask tasks={tasks} setTasks={setTasks} />
+          <AddTask
+            tasks={tasks.filter((t) => !t.completed)}
+            setTasks={setTasks}
+            handleCompleteTask={handleCompleteTask}
+          />
         )}
 
         {activeTab === "Today" && (
@@ -175,15 +151,17 @@ export default function App() {
               todayTasks.map((t) => (
                 <div
                   key={t.id}
-                  style={{ marginBottom: "1rem", marginLeft: "4rem" }}
+                  style={{ marginLeft: "4rem", marginBottom: "1rem" }}
                 >
-                  <Checkbox
-                    onChange={() => handleCheckboxChange(t.id)}
+                  <input
+                    type="checkbox"
+                    onChange={() => handleCompleteTask(t.id)}
                     checked={t.completed}
+                    style={{ marginRight: "0.5rem" }}
                   />
-                  <strong style={{ marginLeft: "0.5rem" }}>{t.title}</strong>
+                  <strong>{t.title}</strong>
                   <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    #{t.project} • {t.date} • {t.priority?.label}
+                    {t.project} • {t.date} • {t.priority?.label}
                   </p>
                 </div>
               ))
@@ -196,63 +174,31 @@ export default function App() {
         {activeTab === "Inbox" && (
           <div style={{ padding: "2rem" }}>
             <h3>Inbox</h3>
-
-            <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
-              <InputText
-                value={inboxInput}
-                onChange={(e) => setInboxInput(e.target.value)}
-                placeholder="Send a message to yourself..."
-                style={{ flex: 2 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSendInboxMessage();
-                }}
-              />
-
-              <Calendar
-                value={inboxTime}
-                onChange={(e) => setInboxTime(e.value)}
-                placeholder="Pick time"
-                showTime
-                style={{ flex: 1 }}
-              />
-
-              <Button
-                label="Send"
-                icon="pi pi-send"
-                severity="secondary" 
-                onClick={handleSendInboxMessage}
-                disabled={!inboxInput.trim() || !inboxTime}
-              />
-            </div>
-
             {inboxTasks.length > 0 ? (
               inboxTasks.map((t) => (
                 <div
                   key={t.id}
                   style={{
                     display: "flex",
-                    justifyContent: "flex-end",
+                    justifyContent: "flex-start",
                     marginBottom: "1rem",
                   }}
                 >
                   <div
                     style={{
-                      backgroundColor: "#dcf8c6",
-                      borderRadius: "1rem",
-                      padding: "0.75rem 1rem",
-                      maxWidth: "60%",
-                      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                      padding: "0.75rem 1.5rem",
+                      maxWidth: "100%",
                     }}
                   >
                     <div style={{ fontWeight: "bold" }}>{t.title}</div>
                     <div style={{ fontSize: "0.85rem", color: "#555" }}>
-                      {new Date(t.date).toLocaleString()} • #{t.project}
+                      {new Date(t.date).toLocaleString()} • {t.project}
                     </div>
                   </div>
                 </div>
               ))
             ) : (
-              <p></p>
+              <p>No tasks in inbox.</p>
             )}
           </div>
         )}
@@ -260,57 +206,48 @@ export default function App() {
         {activeTab === "Upcoming" && (
           <div>
             <h3 style={{ marginLeft: "4rem" }}>Upcoming Tasks</h3>
-            {upcomingTasks.length > 0 ? (
-              upcomingTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{ marginBottom: "1rem", marginLeft: "4rem" }}
-                >
-                  <Checkbox
-                    onChange={() => handleCheckboxChange(t.id)}
-                    checked={t.completed}
-                  />
-                  <strong style={{ marginLeft: "0.5rem" }}>{t.title}</strong>
-                  <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    #{t.project} • {t.date} • {t.priority?.label}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p style={{ marginLeft: "4rem" }}>No upcoming tasks.</p>
-            )}
+            {upcomingTasks.map((t) => (
+              <div
+                key={t.id}
+                style={{ marginLeft: "4rem", marginBottom: "1rem" }}
+              >
+                <input
+                  type="checkbox"
+                  onChange={() => handleCompleteTask(t.id)}
+                  checked={t.completed}
+                  style={{ marginRight: "0.5rem" }}
+                />
+                <strong>{t.title}</strong>
+                <p style={{ fontSize: "0.9rem", color: "#666" }}>
+                  {t.project} • {t.date} • {t.priority?.label}
+                </p>
+              </div>
+            ))}
           </div>
         )}
 
         {activeTab === "Completed" && (
           <div>
             <h3 style={{ marginLeft: "4rem" }}>Completed Tasks</h3>
-            {completedTasks.length > 0 ? (
-              completedTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{ marginBottom: "1rem", marginLeft: "4rem" }}
-                >
-                  <Checkbox
-                    onChange={() => handleCheckboxChange(t.id)}
-                    checked={t.completed}
-                  />
-                  <strong
-                    style={{
-                      textDecoration: "line-through",
-                      marginLeft: "0.5rem",
-                    }}
-                  >
-                    {t.title}
-                  </strong>
-                  <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    #{t.project} • {t.date} • {t.priority?.label}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p style={{ marginLeft: "4rem" }}>No completed tasks.</p>
-            )}
+            {completedTasks.map((t) => (
+              <div
+                key={t.id}
+                style={{ marginLeft: "4rem", marginBottom: "1rem" }}
+              >
+                <input
+                  type="checkbox"
+                  onChange={() => handleCompleteTask(t.id)}
+                  checked={t.completed}
+                  style={{ marginRight: "0.5rem" }}
+                />
+                <strong style={{ textDecoration: "line-through" }}>
+                  {t.title}
+                </strong>
+                <p style={{ fontSize: "0.9rem", color: "#666" }}>
+                  {t.project} • {t.date} • {t.priority?.label}
+                </p>
+              </div>
+            ))}
           </div>
         )}
 
@@ -331,6 +268,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 🔍 Search Dialog */}
       <Dialog
         header="Search Tasks"
         visible={searchVisible}
@@ -338,26 +276,33 @@ export default function App() {
         onHide={() => {
           setSearchVisible(false);
           setSearchQuery("");
+          setSearchDate(null);
         }}
-        draggable={false}
         modal
       >
         <InputText
-          placeholder="Search by title, #project or date"
+          placeholder="Search by title or #project"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="p-inputtext-lg"
           style={{ width: "100%", marginBottom: "1rem" }}
         />
 
-        {searchQuery && (
+        <Calendar
+          value={searchDate}
+          onChange={(e) => setSearchDate(e.value)}
+          placeholder="Search by date"
+          showIcon
+          style={{ marginBottom: "1rem" }}
+        />
+
+        {searchQuery || searchDate ? (
           <div>
             {filteredTasks.length > 0 ? (
               filteredTasks.map((t) => (
                 <div key={t.id} style={{ marginBottom: "1rem" }}>
                   <strong>{t.title}</strong>
                   <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    #{t.project} • {t.date} • {t.priority?.label}
+                    {t.project} • {t.date} • {t.priority?.label}
                   </p>
                 </div>
               ))
@@ -365,6 +310,8 @@ export default function App() {
               <p>No matching tasks found.</p>
             )}
           </div>
+        ) : (
+          <p>Type a query or select a date to search tasks.</p>
         )}
       </Dialog>
     </div>

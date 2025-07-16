@@ -9,7 +9,7 @@ import { Divider } from "primereact/divider";
 import "./AddTask.css";
 import DescriptionOverlay from "./DescriptionOverlay";
 
-export default function AddTask({ tasks, setTasks }) {
+export default function AddTask({ tasks, setTasks, handleCompleteTask }) {
   const [task, setTask] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState(new Date());
@@ -17,44 +17,19 @@ export default function AddTask({ tasks, setTasks }) {
   const [priority, setPriority] = useState({ level: 4, label: "⚪ Priority 4" });
   const [reminder, setReminder] = useState(null);
   const [reminderTime, setReminderTime] = useState(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(true);
   const [editingProject, setEditingProject] = useState(false);
-  const [project, setProject] = useState("Inbox");
+  const [projects, setProjects] = useState(["#Inbox"]);
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
-
   const menu = useRef(null);
   const reminderMenu = useRef(null);
-
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
   const [currentDescription, setCurrentDescription] = useState("");
 
-  const priorityOptions = [
-    { label: "🔴 Priority 1", command: () => setPriority({ level: 1, label: "🔴 Priority 1" }) },
-    { label: "🟡 Priority 2", command: () => setPriority({ level: 2, label: "🟡 Priority 2" }) },
-    { label: "🔵 Priority 3", command: () => setPriority({ level: 3, label: "🔵 Priority 3" }) },
-    { label: "⚪ Priority 4", command: () => setPriority({ level: 4, label: "⚪ Priority 4" }) },
-  ];
-
-  const reminderOptions = [
-    {
-      label: "Set date and time",
-      icon: "pi pi-calendar",
-      command: () => setReminder("datetime"),
-    },
-    {
-      label: "Before task",
-      icon: "pi pi-clock",
-      command: () => {
-        setReminder("before");
-        setReminderTime("10 minutes before");
-      },
-    },
-  ];
-
-  const extractProjectFromTask = (text) => {
-    const match = text.match(/#(\w+)/);
-    return match ? match[1] : project || "Inbox";
+  const extractProjectsFromTask = (text) => {
+    const matches = text.match(/#\w+/g);
+    return matches || ["#Inbox"];
   };
 
   const handleAddClick = () => {
@@ -63,14 +38,14 @@ export default function AddTask({ tasks, setTasks }) {
       return;
     }
 
-    const extractedProject = extractProjectFromTask(task);
-    const cleanedTask = task.replace(/#\w+/, "").trim();
+    const extractedProjects = extractProjectsFromTask(task);
+    const cleanedTask = task.replace(/#\w+/g, "").trim();
 
     const newTask = {
       id: Date.now(),
       title: cleanedTask,
       description,
-      project: extractedProject,
+      projects: extractedProjects,
       date: dueDate.toISOString(),
       priority,
       reminder:
@@ -84,15 +59,16 @@ export default function AddTask({ tasks, setTasks }) {
       showComments: false,
       commentInput: "",
       comments: [],
+      completed: false,
     };
 
+    const updatedTasks = [...tasks];
     if (isEditing && editTaskIndex !== null) {
-      const updated = [...tasks];
-      updated[editTaskIndex] = newTask;
-      setTasks(updated);
+      updatedTasks[editTaskIndex] = newTask;
     } else {
-      setTasks((prev) => [...prev, newTask]);
+      updatedTasks.push(newTask);
     }
+    setTasks(updatedTasks);
 
     setTask("");
     setDescription("");
@@ -103,7 +79,7 @@ export default function AddTask({ tasks, setTasks }) {
     setShowCalendar(false);
     setShowForm(false);
     setEditingProject(false);
-    setProject("Inbox");
+    setProjects(["#Inbox"]);
     setIsEditing(false);
     setEditTaskIndex(null);
   };
@@ -121,17 +97,62 @@ export default function AddTask({ tasks, setTasks }) {
     setTasks(updated);
   };
 
+  const priorityOptions = [
+    {
+      label: "🔴 Priority 1",
+      command: () => setPriority({ level: 1, label: "🔴 Priority 1" }),
+    },
+    {
+      label: "🟠 Priority 2",
+      command: () => setPriority({ level: 2, label: "🟠 Priority 2" }),
+    },
+    {
+      label: "🟡 Priority 3",
+      command: () => setPriority({ level: 3, label: "🟡 Priority 3" }),
+    },
+    {
+      label: "⚪ Priority 4",
+      command: () => setPriority({ level: 4, label: "⚪ Priority 4" }),
+    },
+  ];
+
+  const reminderOptions = [
+    {
+      label: "Set Date & Time",
+      command: () => setReminder("datetime"),
+    },
+    {
+      label: "10 minutes before",
+      command: () => setReminder("before"),
+    },
+    {
+      label: "Clear Reminder",
+      command: () => {
+        setReminder(null);
+        setReminderTime(null);
+      },
+    },
+  ];
+
   return (
     <div className="add-task-wrapper">
       <h2 className="heading">Today</h2>
       {tasks.length > 0 && (
-        <p className="task-count">{tasks.length} task{tasks.length !== 1 ? "s" : ""}</p>
+        <p className="task-count">
+          {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+        </p>
       )}
 
       <div className="task-list">
         {tasks.map((t, index) => (
           <div key={t.id} className="task-item-wrapper">
             <div className="task-item">
+              <input
+                type="checkbox"
+                onChange={() => handleCompleteTask(t.id)}
+                checked={t.completed}
+                style={{ marginRight: "1rem" }}
+              />
               <span
                 className="task-title"
                 onClick={() => {
@@ -144,12 +165,13 @@ export default function AddTask({ tasks, setTasks }) {
               >
                 {t.title}
                 <div className="task-meta">
-                  {new Date(t.date).toLocaleDateString()} • #{t.project} • {t.priority.label}
-                  {t.reminder && ` • ⏰ ${
-                    t.reminder === "10 minutes before"
-                      ? t.reminder
-                      : new Date(t.reminder).toLocaleString()
-                  }`}
+                  {new Date(t.date).toLocaleDateString()} • {t.projects?.join(" ")} • {t.priority.label}
+                  {t.reminder &&
+                    ` • ⏰ ${
+                      t.reminder === "10 minutes before"
+                        ? t.reminder
+                        : new Date(t.reminder).toLocaleString()
+                    }`}
                 </div>
               </span>
 
@@ -158,7 +180,7 @@ export default function AddTask({ tasks, setTasks }) {
                   className="pi pi-pencil"
                   title="Edit"
                   onClick={() => {
-                    setTask(t.title + " #" + t.project);
+                    setTask(t.title + " " + t.projects?.join(" "));
                     setDescription(t.description);
                     setDueDate(new Date(t.date));
                     setPriority(t.priority);
@@ -174,7 +196,7 @@ export default function AddTask({ tasks, setTasks }) {
                         ? new Date(t.reminder)
                         : null
                     );
-                    setProject(t.project);
+                    setProjects(t.projects);
                     setIsEditing(true);
                     setEditTaskIndex(index);
                     setShowForm(true);
@@ -204,7 +226,13 @@ export default function AddTask({ tasks, setTasks }) {
             )}
 
             {t.showComments && (
-              <div style={{ marginLeft: "2rem", marginTop: "0.5rem", width: "100%" }}>
+              <div
+                style={{
+                  marginLeft: "2rem",
+                  marginTop: "0.5rem",
+                  width: "100%",
+                }}
+              >
                 <InputText
                   placeholder="Add a comment and press Enter"
                   value={t.commentInput || ""}
@@ -225,7 +253,7 @@ export default function AddTask({ tasks, setTasks }) {
                 />
                 <ul style={{ paddingLeft: "1rem", fontSize: "14px", marginTop: "0.5rem" }}>
                   {t.comments.map((comment, i) => (
-                    <li key={i}>– {comment}</li>
+                    <li key={i}>- {comment}</li>
                   ))}
                 </ul>
               </div>
@@ -239,7 +267,6 @@ export default function AddTask({ tasks, setTasks }) {
         <Button
           label="Add task"
           icon="pi pi-plus"
-          iconPos="left"
           className="custom-add-task-btn"
           onClick={() => setShowForm(true)}
         />
@@ -248,7 +275,7 @@ export default function AddTask({ tasks, setTasks }) {
           <InputText
             value={task}
             onChange={(e) => setTask(e.target.value)}
-            placeholder="e.g. Read book #Personal"
+            placeholder="e.g. Read book #Personal #Work"
             className="task-input"
           />
           <InputTextarea
@@ -305,7 +332,6 @@ export default function AddTask({ tasks, setTasks }) {
                 className="calendar-picker"
               />
             )}
-
             {reminder === "before" && (
               <small style={{ fontSize: "12px", color: "#888" }}>
                 Reminder set: 10 minutes before task
@@ -317,7 +343,7 @@ export default function AddTask({ tasks, setTasks }) {
             <div className="footer-left">
               {!editingProject ? (
                 <Chip
-                  label={project}
+                  label={projects.join(", ")}
                   icon="pi pi-folder"
                   className="custom-chip"
                   onClick={() => setEditingProject(true)}
@@ -325,16 +351,11 @@ export default function AddTask({ tasks, setTasks }) {
               ) : (
                 <InputText
                   autoFocus
-                  value={project}
-                  onChange={(e) => setProject(e.target.value)}
+                  value={projects.join(", ")}
+                  onChange={(e) => setProjects(e.target.value.split(/,\s*/).map(p => p.startsWith("#") ? p : "#" + p))}
                   onBlur={() => setEditingProject(false)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      setProject(e.target.value);
-                      setTask((prev) => {
-                        const clean = prev.replace(/#\w+/, "").trim();
-                        return clean + " #" + e.target.value;
-                      });
                       setEditingProject(false);
                     }
                   }}
@@ -356,7 +377,7 @@ export default function AddTask({ tasks, setTasks }) {
                   setPriority({ level: 4, label: "⚪ Priority 4" });
                   setShowForm(false);
                   setEditingProject(false);
-                  setProject("Inbox");
+                  setProjects(["#Inbox"]);
                   setIsEditing(false);
                   setEditTaskIndex(null);
                 }}

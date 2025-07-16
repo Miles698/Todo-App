@@ -39,7 +39,7 @@ export default function LabelsFeaturesSection() {
       <div style={{ marginBottom: "2rem" }}>
         <h4 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           Labels
-          <Button icon="pi pi-plus" severity="secondary"  rounded onClick={() => setLabelDialogVisible(true)} />
+          <Button icon="pi pi-plus" severity="secondary" rounded onClick={() => setLabelDialogVisible(true)} />
         </h4>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
           {labels.map((l, i) => (
@@ -62,7 +62,7 @@ export default function LabelsFeaturesSection() {
       <div>
         <h4 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           Features
-          <Button icon="pi pi-plus" severity="secondary"  rounded onClick={() => setFeatureDialogVisible(true)} />
+          <Button icon="pi pi-plus" severity="secondary" rounded onClick={() => setFeatureDialogVisible(true)} />
         </h4>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
           {features.map((f, i) => (
@@ -101,8 +101,25 @@ export default function LabelsFeaturesSection() {
           />
           <ColorPicker value={labelColor} onChange={(e) => setLabelColor(e.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}>
-            <Button label="Cancel" onClick={() => setLabelDialogVisible(false)} />
-            <Button label="Add" onClick={addLabel} disabled={!newLabel.trim()} />
+            <Button
+              label="Cancel"
+              onClick={() => setLabelDialogVisible(false)}
+              style={{
+                backgroundColor: "white",
+                color: "black",
+                border: "1px solid #ccc",
+              }}
+            />
+            <Button
+              label="Add"
+              onClick={addLabel}
+              disabled={!newLabel.trim()}
+              style={{
+                backgroundColor: "#e53935",
+                color: "white",
+                border: "none",
+              }}
+            />
           </div>
         </div>
       </Dialog>
@@ -122,8 +139,25 @@ export default function LabelsFeaturesSection() {
           />
           <ColorPicker value={featureColor} onChange={(e) => setFeatureColor(e.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}>
-            <Button label="Cancel" onClick={() => setFeatureDialogVisible(false)} />
-            <Button label="Add" onClick={addFeature} disabled={!newFeature.trim()} />
+            <Button
+              label="Cancel"
+              onClick={() => setFeatureDialogVisible(false)}
+              style={{
+                backgroundColor: "white",
+                color: "black",
+                border: "1px solid #ccc",
+              }}
+            />
+            <Button
+              label="Add"
+              onClick={addFeature}
+              disabled={!newFeature.trim()}
+              style={{
+                backgroundColor: "#e53935",
+                color: "white",
+                border: "none",
+              }}
+            />
           </div>
         </div>
       </Dialog>

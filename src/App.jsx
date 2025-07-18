@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useState, useEffect } from "react";
 import AddTask from "./Components/AddTask";
 import Sidebar from "./Components/Sidebar";
@@ -6,6 +7,7 @@ import { Dialog } from "primereact/dialog";
 import { InputText } from "primereact/inputtext";
 import { Calendar } from "primereact/calendar";
 import LabelsFeaturesSection from "./Components/LabelsFeaturesSection";
+import CategoryPage from "./Components/CategoryPage";
 import "./App.css";
 
 export default function App() {
@@ -15,6 +17,7 @@ export default function App() {
   const [searchDate, setSearchDate] = useState(null);
   const [activeTab, setActiveTab] = useState("Add Task");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [customCategories, setCustomCategories] = useState([]);
 
   const isToday = (isoDateStr) => {
     const date = new Date(isoDateStr);
@@ -33,21 +36,41 @@ export default function App() {
   };
 
   const todayTasks = tasks.filter(
-    (t) => t.date && isToday(t.date) && !t.completed
+    (task) =>
+      !task.completed &&
+      task.date &&
+      isToday(task.date) &&
+      (!task.projects ||
+        !task.projects.some((p) =>
+          customCategories.includes(p.replace("#", ""))
+        ))
   );
+
   const upcomingTasks = tasks.filter(
-    (t) => t.date && isFutureDate(t.date) && !t.completed
+    (task) =>
+      !task.completed &&
+      task.date &&
+      isFutureDate(task.date) &&
+      (!task.projects ||
+        !task.projects.some((p) =>
+          customCategories.includes(p.replace("#", ""))
+        ))
   );
-  const inboxTasks = tasks
-    .filter((t) => t.project === "#Inbox" && !t.completed)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const inboxTasks = tasks.filter(
+    (task) =>
+      task.inboxOnly &&
+      !task.completed &&
+      (!task.projects || task.projects.length === 0)
+  );
+
   const completedTasks = tasks.filter((t) => t.completed);
 
   const filteredTasks = tasks.filter((t) => {
     const lower = searchQuery.toLowerCase();
     const matchText =
       t.title.toLowerCase().includes(lower) ||
-      t.project.toLowerCase().includes(lower) ||
+      (t.projects && t.projects.some((p) => p.toLowerCase().includes(lower))) ||
       (t.date && t.date.toLowerCase().includes(lower));
 
     const matchDate = searchDate
@@ -57,6 +80,24 @@ export default function App() {
     return matchText && matchDate;
   });
 
+  const handleAddTask = (newTask) => {
+    const taskToAdd = {
+      ...newTask,
+      id: Date.now(),
+      completed: false,
+      inboxOnly: activeTab === "Inbox",
+    };
+
+    // 🛠 Assign project tag based on current tab
+    if (customCategories.includes(activeTab)) {
+      taskToAdd.projects = [`#${activeTab}`];
+    } else if (!taskToAdd.projects || taskToAdd.projects.length === 0) {
+      taskToAdd.projects = ["#Inbox"];
+    }
+
+    setTasks((prev) => [...prev, taskToAdd]);
+  };
+
   const handleCompleteTask = (id) => {
     setTasks((prev) =>
       prev.map((task) =>
@@ -65,6 +106,7 @@ export default function App() {
     );
   };
 
+  // 🛎️ Reminder Notifications
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
@@ -104,6 +146,9 @@ export default function App() {
         todayCount={todayTasks.length}
         upcomingCount={upcomingTasks.length}
         completedCount={completedTasks.length}
+        customCategories={customCategories}
+        setCustomCategories={setCustomCategories}
+        onCategoryClick={(cat) => setActiveTab(cat)}
       />
 
       <div
@@ -115,88 +160,161 @@ export default function App() {
           marginRight: notificationsOpen ? "300px" : 0,
         }}
       >
-        <div
-          className="top-bar"
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: "1rem",
-            marginBottom: "1rem",
-          }}
-        >
-          <Button
-            label="Connect calendar"
-            icon="pi pi-calendar-plus"
-            className="p-button-outlined p-button-secondary"
-          />
-          <Button
-            label="List"
-            icon="pi pi-bars"
-            className="p-button-text p-button-secondary"
-          />
-        </div>
-
         {activeTab === "Add Task" && (
           <AddTask
-            tasks={tasks.filter((t) => !t.completed)}
+            tasks={tasks.filter(
+              (t) =>
+                !t.completed &&
+                (!t.projects ||
+                  !customCategories.includes(t.projects[0]?.replace("#", "")))
+            )}
             setTasks={setTasks}
             handleCompleteTask={handleCompleteTask}
+            onAddTask={handleAddTask}
           />
         )}
 
         {activeTab === "Today" && (
           <div>
-            <h3 style={{ marginLeft: "4rem" }}>Today's Tasks</h3>
+            <h3 style={{ marginLeft: "2.5rem" }}>Today's Tasks</h3>
             {todayTasks.length > 0 ? (
               todayTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{ marginLeft: "4rem", marginBottom: "1rem" }}
-                >
+                <div key={t.id}
+                style={{
+            marginLeft: "2.5rem"}}>
+                  
                   <input
                     type="checkbox"
-                    onChange={() => handleCompleteTask(t.id)}
                     checked={t.completed}
+                    onChange={() => handleCompleteTask(t.id)}
                     style={{ marginRight: "0.5rem" }}
                   />
                   <strong>{t.title}</strong>
                   <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    {t.project} • {t.date} • {t.priority?.label}
+                    {t.projects?.join(", ")} • {t.date}
                   </p>
                 </div>
               ))
             ) : (
-              <p style={{ marginLeft: "4rem" }}>No tasks for today.</p>
+              <p style={{marginLeft: "2.5rem"}}>No tasks for today.</p>
             )}
           </div>
         )}
 
         {activeTab === "Inbox" && (
-          <div style={{ padding: "2rem" }}>
+          <div style={{ padding: "1rem" }}>
             <h3>Inbox</h3>
-            {inboxTasks.length > 0 ? (
-              inboxTasks.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-start",
-                    marginBottom: "1rem",
-                  }}
-                >
+            {tasks.filter((t) => {
+              // Normalize project to #Inbox if missing or empty
+              const normalized = t.projects?.length
+                ? t.projects.map((p) =>
+                    p.trim().startsWith("#") ? p : `#${p}`
+                  )
+                : ["#Inbox"];
+              return normalized.includes("#Inbox") && !t.completed;
+            }).length > 0 ? (
+              tasks
+                .filter((t) => {
+                  const normalized = t.projects?.length
+                    ? t.projects.map((p) =>
+                        p.trim().startsWith("#") ? p : `#${p}`
+                      )
+                    : ["#Inbox"];
+                  return normalized.includes("#Inbox") && !t.completed;
+                })
+                .map((t) => (
                   <div
+                    key={t.id}
+                    className="task-item-wrapper"
                     style={{
-                      padding: "0.75rem 1.5rem",
-                      maxWidth: "100%",
+                      padding: "0.75rem",
+                      marginBottom: "0.75rem",
+                     
+                      position: "relative",
+                      background: "#fff",
                     }}
                   >
-                    <div style={{ fontWeight: "bold" }}>{t.title}</div>
-                    <div style={{ fontSize: "0.85rem", color: "#555" }}>
-                      {new Date(t.date).toLocaleString()} • {t.project}
+                    <strong>{t.title}</strong>
+                    <p
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "#555",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      {t.date || "No date"} •{" "}
+                      {t.projects?.join(", ") || "#Inbox"}
+                    </p>
+
+                    {/* Hover icons like calendar/comment/edit */}
+                    <div
+                      className="hover-actions"
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "10px",
+                      }}
+                    >
+                      <i
+                        className="pi pi-calendar"
+                        title="Change Date"
+                        style={{ marginRight: "0.5rem", cursor: "pointer" }}
+                        onClick={() =>
+                          toggleTaskProperty(t.id, "showDateEditor")
+                        }
+                      />
+                      <i
+                        className="pi pi-comment"
+                        title="Toggle Comments"
+                        style={{ marginRight: "0.5rem", cursor: "pointer" }}
+                        onClick={() => toggleTaskProperty(t.id, "showComments")}
+                      />
+                      <i
+                        className="pi pi-pencil"
+                        title="Edit Task"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleEdit(t.id)}
+                      />
                     </div>
+
+                    {/* Comment Input */}
+                    {t.showComments && (
+                      <div className="comment-box">
+                        <InputText
+                          value={t.commentInput || ""}
+                          onChange={(e) =>
+                            handleCommentChange(e.target.value, t.id)
+                          }
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleAddComment(t.id)
+                          }
+                          placeholder="Write a comment and press Enter"
+                          style={{ width: "100%", marginTop: "0.5rem" }}
+                        />
+                        {t.comments?.length > 0 && (
+                          <ul className="comment-list">
+                            {t.comments.map((c, i) => (
+                              <li key={i} className="comment-item">
+                                {c}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Optional: Date picker */}
+                    {t.showDateEditor && (
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <Calendar
+                          value={t.date}
+                          onChange={(e) => handleDateChange(t.id, e.value)}
+                          showIcon
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))
+                ))
             ) : (
               <p>No tasks in inbox.</p>
             )}
@@ -205,47 +323,46 @@ export default function App() {
 
         {activeTab === "Upcoming" && (
           <div>
-            <h3 style={{ marginLeft: "4rem" }}>Upcoming Tasks</h3>
-            {upcomingTasks.map((t) => (
-              <div
-                key={t.id}
-                style={{ marginLeft: "4rem", marginBottom: "1rem" }}
-              >
-                <input
-                  type="checkbox"
-                  onChange={() => handleCompleteTask(t.id)}
-                  checked={t.completed}
-                  style={{ marginRight: "0.5rem" }}
-                />
-                <strong>{t.title}</strong>
-                <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                  {t.project} • {t.date} • {t.priority?.label}
-                </p>
-              </div>
-            ))}
+            <h3 style={{ marginLeft: "2.5rem" }}>Upcoming Tasks</h3>
+            {upcomingTasks.length > 0 ? (
+              upcomingTasks.map((t) => (
+                <div key={t.id}
+                style={{
+            marginLeft: "2.5rem"}}>
+                  <input
+                    type="checkbox"
+                    checked={t.completed}
+                    onChange={() => handleCompleteTask(t.id)}
+                    style={{ marginRight: "0.5rem" }}
+                  />
+                  <strong>{t.title}</strong>
+                  <p style={{ fontSize: "0.9rem", color: "#666" }}>
+                    {t.projects?.join(", ")} • {t.date}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p style={{marginLeft: "2.5rem"}}>No upcoming tasks.</p>
+            )}
           </div>
         )}
 
         {activeTab === "Completed" && (
           <div>
-            <h3 style={{ marginLeft: "4rem" }}>Completed Tasks</h3>
+            <h3 style={{ marginLeft: "2.5rem" }}>Completed Tasks</h3>
             {completedTasks.map((t) => (
-              <div
-                key={t.id}
-                style={{ marginLeft: "4rem", marginBottom: "1rem" }}
-              >
+              <div key={t.id}
+              style={{
+            marginLeft: "2.5rem"}}>
                 <input
                   type="checkbox"
-                  onChange={() => handleCompleteTask(t.id)}
                   checked={t.completed}
+                  onChange={() => handleCompleteTask(t.id)}
                   style={{ marginRight: "0.5rem" }}
                 />
                 <strong style={{ textDecoration: "line-through" }}>
                   {t.title}
                 </strong>
-                <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                  {t.project} • {t.date} • {t.priority?.label}
-                </p>
               </div>
             ))}
           </div>
@@ -255,6 +372,16 @@ export default function App() {
           <div style={{ padding: "2rem" }}>
             <LabelsFeaturesSection />
           </div>
+        )}
+
+        {customCategories.includes(activeTab) && (
+          <CategoryPage
+            categoryName={activeTab} // ✅ Pass this prop!
+            tasks={tasks}
+            setTasks={setTasks}
+            handleCompleteTask={handleCompleteTask}
+            defaultProject={activeTab}
+          />
         )}
       </div>
 
@@ -268,7 +395,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 🔍 Search Dialog */}
       <Dialog
         header="Search Tasks"
         visible={searchVisible}
@@ -286,7 +412,6 @@ export default function App() {
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ width: "100%", marginBottom: "1rem" }}
         />
-
         <Calendar
           value={searchDate}
           onChange={(e) => setSearchDate(e.value)}
@@ -294,15 +419,14 @@ export default function App() {
           showIcon
           style={{ marginBottom: "1rem" }}
         />
-
         {searchQuery || searchDate ? (
           <div>
             {filteredTasks.length > 0 ? (
               filteredTasks.map((t) => (
-                <div key={t.id} style={{ marginBottom: "1rem" }}>
+                <div key={t.id}>
                   <strong>{t.title}</strong>
                   <p style={{ fontSize: "0.9rem", color: "#666" }}>
-                    {t.project} • {t.date} • {t.priority?.label}
+                    {t.projects?.join(", ")} • {t.date}
                   </p>
                 </div>
               ))

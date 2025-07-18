@@ -179,3 +179,11 @@
   font-size: 1rem;
   margin-right: 0.5rem;
 }
+
+.task-description-input {
+  width: 100%; /* or use 600px, 80%, etc. depending on layout */
+  min-width: 400px;
+  max-width: 100%;
+  resize: vertical; /* allows vertical resizing only */
+}
+

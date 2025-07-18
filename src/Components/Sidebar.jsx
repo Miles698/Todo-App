@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Avatar } from "primereact/avatar";
 import { Button } from "primereact/button";
 import { Dialog } from "primereact/dialog";
@@ -14,14 +14,29 @@ const Sidebar = ({
   todayCount,
   upcomingCount,
   completedCount,
+  customCategories,
+  setCustomCategories,
+  onCategoryClick,
 }) => {
   const [categoryDialogVisible, setCategoryDialogVisible] = useState(false);
   const [newCategory, setNewCategory] = useState("");
-  const [newSubcategory, setNewSubcategory] = useState("");
-  const [customCategories, setCustomCategories] = useState({});
+  const [projectsExpanded, setProjectsExpanded] = useState(true);
+
+  // Extract unique project tags from tasks dynamically
+  const dynamicCategories = Array.from(
+    new Set(
+      tasks
+        .flatMap((task) => task.projects || [])
+        .filter((proj) => proj !== "#Inbox")
+    )
+  ).sort();
+
+  useEffect(() => {
+    setCustomCategories(dynamicCategories);
+  }, [tasks]);
 
   const menuItems = [
-    { label: "Add Task", icon: "pi-plus-circle" },
+    { label: "Add Task", icon: "pi pi-plus-circle" },
     { label: "Search", icon: "pi pi-search" },
     {
       label: todayCount > 0 ? `Today (${todayCount})` : "Today",
@@ -50,51 +65,24 @@ const Sidebar = ({
     }
   };
 
-  const handleAddCategoryOrSub = () => {
-    const cat = newCategory.trim();
-    const sub = newSubcategory.trim();
+  const handleAddCategory = () => {
+    const trimmed = newCategory.trim();
+    if (!trimmed.startsWith("#")) return;
 
-    if (!cat.startsWith("#")) return;
-
-    setCustomCategories((prev) => {
-      const updated = { ...prev };
-      if (!updated[cat]) updated[cat] = [];
-      if (sub && sub.startsWith("/") && !updated[cat].includes(sub)) {
-        updated[cat].push(sub);
-      }
-      return updated;
-    });
+    if (!customCategories.includes(trimmed)) {
+      const updated = [...customCategories, trimmed];
+      setCustomCategories(updated);
+      if (onCategoryClick) onCategoryClick(trimmed);
+      setActiveTab(trimmed);
+    }
 
     setNewCategory("");
-    setNewSubcategory("");
     setCategoryDialogVisible(false);
   };
 
-  // ✅ Collect all tags from both `project` and `projects` arrays
-  const taskProjects = [
-    ...new Set(
-      tasks.flatMap((t) => {
-        if (Array.isArray(t.projects)) return t.projects;
-        if (typeof t.project === "string") return [t.project];
-        return [];
-      })
-    ),
-  ]
-    .filter((p) => p && p.startsWith("#")) // Only valid project tags
-    .map((p) => p.trim());
-
-  // ✅ Build object { "#Work": [], "#Home": [] }
-  const taskProjectMap = taskProjects.reduce((acc, tag) => {
-    if (!acc[tag]) acc[tag] = [];
-    return acc;
-  }, {});
-
-  // 🔀 Merge task-derived and custom-defined categories
-  const mergedProjects = { ...taskProjectMap, ...customCategories };
-
   return (
     <div className="sidebar">
-      {/* 🔝 Top Section */}
+      {/* 👤 Profile Header */}
       <div className="sidebar-top">
         <Avatar label="M" shape="circle" size="large" />
         <span className="username">Miles AyKays</span>
@@ -105,21 +93,21 @@ const Sidebar = ({
         />
       </div>
 
-      {/* 📋 Menu */}
+      {/* 📌 Sidebar Menu */}
       {menuItems.map(({ label, icon, rawLabel }) => {
-        const baseLabel = rawLabel || label;
+        const base = rawLabel || label;
         return (
           <div
             key={label}
             className={`menu-item-wrapper ${
-              activeTab === baseLabel ? "active" : ""
+              activeTab === base ? "active" : ""
             }`}
           >
             <Button
               label={label}
-              icon={`pi ${icon}`}
+              icon={icon}
               className="p-button-text"
-              onClick={() => handleMenuClick(baseLabel)}
+              onClick={() => handleMenuClick(base)}
             />
           </div>
         );
@@ -129,42 +117,64 @@ const Sidebar = ({
       <div className="project-list">
         <div
           className="project-header"
-          style={{ display: "flex", justifyContent: "space-between" }}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
         >
-          <h4 className="project-heading" style={{ marginTop: "4px" }}>
+          <h4 className="project-heading" style={{ margin: 0 }}>
             My Projects
           </h4>
-          <Button
-            icon="pi pi-plus"
-            className="p-button-rounded p-button-text gray-plus-icon"
-            onClick={() => setCategoryDialogVisible(true)}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Button
+              icon="pi pi-plus"
+              className="p-button-rounded p-button-text gray-plus-icon"
+              onClick={() => setCategoryDialogVisible(true)}
+            />
+            <i
+              className={`pi ${
+                projectsExpanded ? "pi-chevron-down" : "pi-chevron-right"
+              }`}
+              style={{ cursor: "pointer", fontSize: "1rem" }}
+              onClick={() => setProjectsExpanded((prev) => !prev)}
+            />
+          </div>
         </div>
 
-        <ul>
-          {Object.entries(mergedProjects).map(([cat, subs]) => (
-            <li key={cat} className="project-item">
-              {cat}{" "}
-              {subs.length > 0 && (
-                <span style={{ color: "#888" }}>({subs.length})</span>
-              )}
-              {subs.length > 0 && (
-                <ul className="subcategory-list" style={{ paddingLeft: "1rem" }}>
-                  {subs.map((sub, i) => (
-                    <li key={i} className="project-item sub">
-                      {sub}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
+        {/* 🧾 Project List */}
+        {projectsExpanded && (
+          <ul>
+            {customCategories.map((category) => {
+              const count = tasks.filter(
+                (task) =>
+                  task.projects &&
+                  task.projects.includes(category) &&
+                  !task.completed &&
+                  !task.inboxOnly
+              ).length;
+
+              return (
+                <li
+                  key={category}
+                  onClick={() => setActiveTab(category)}
+                  className={activeTab === category ? "active" : ""}
+                  style={{ cursor: "pointer" }}
+                >
+                  {category}{" "}
+                  {count > 0 && (
+                    <span style={{ color: "#999" }}>({count})</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
-      {/* ➕ Add Category/Subcategory Dialog */}
+      {/* ➕ Add Category Dialog */}
       <Dialog
-        header="Add Category / Subcategory"
+        header="Add Project"
         visible={categoryDialogVisible}
         style={{ width: "30vw" }}
         onHide={() => setCategoryDialogVisible(false)}
@@ -175,14 +185,9 @@ const Sidebar = ({
           style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
         >
           <InputText
-            placeholder="Category (e.g. #Work)"
+            placeholder="Project name (e.g. #Work)"
             value={newCategory}
             onChange={(e) => setNewCategory(e.target.value)}
-          />
-          <InputText
-            placeholder="Subcategory (optional, e.g. /Frontend)"
-            value={newSubcategory}
-            onChange={(e) => setNewSubcategory(e.target.value)}
           />
           <div
             style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}
@@ -190,18 +195,14 @@ const Sidebar = ({
             <Button
               label="Cancel"
               onClick={() => setCategoryDialogVisible(false)}
-              style={{
-                backgroundColor: "white",
-                color: "black",
-                border: "1px solid #ccc",
-              }}
+              className="p-button-outlined"
             />
             <Button
               label="Add"
               icon="pi pi-check"
-              onClick={handleAddCategoryOrSub}
+              onClick={handleAddCategory}
               disabled={!newCategory.trim().startsWith("#")}
-              style={{ backgroundColor: "red", color: "white", border: "none" }}
+              className="p-button-danger"
             />
           </div>
         </div>

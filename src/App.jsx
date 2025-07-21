@@ -18,6 +18,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("Add Task");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [customCategories, setCustomCategories] = useState([]);
+  const [recentlyCompleted, setRecentlyCompleted] = useState(null);
+  const [showUndo, setShowUndo] = useState(false);
 
   const isToday = (isoDateStr) => {
     const date = new Date(isoDateStr);
@@ -99,11 +101,32 @@ export default function App() {
   };
 
   const handleCompleteTask = (id) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
+    const updatedTasks = tasks.map((task) =>
+      task.id === id ? { ...task, completed: !task.completed } : task
     );
+    setTasks(updatedTasks);
+
+    const justCompleted = tasks.find((task) => task.id === id);
+    if (!justCompleted.completed) {
+      setRecentlyCompleted(justCompleted);
+      setShowUndo(true);
+
+      setTimeout(() => {
+        setShowUndo(false);
+        setRecentlyCompleted(null);
+      }, 5000); // 5 seconds to undo
+    }
+  };
+
+  const handleUndo = () => {
+    if (recentlyCompleted) {
+      const updatedTasks = tasks.map((task) =>
+        task.id === recentlyCompleted.id ? { ...task, completed: false } : task
+      );
+      setTasks(updatedTasks);
+      setShowUndo(false);
+      setRecentlyCompleted(null);
+    }
   };
 
   // 🛎️ Reminder Notifications
@@ -179,10 +202,12 @@ export default function App() {
             <h3 style={{ marginLeft: "2.5rem" }}>Today's Tasks</h3>
             {todayTasks.length > 0 ? (
               todayTasks.map((t) => (
-                <div key={t.id}
-                style={{
-            marginLeft: "2.5rem"}}>
-                  
+                <div
+                  key={t.id}
+                  style={{
+                    marginLeft: "2.5rem",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={t.completed}
@@ -196,7 +221,7 @@ export default function App() {
                 </div>
               ))
             ) : (
-              <p style={{marginLeft: "2.5rem"}}>No tasks for today.</p>
+              <p style={{ marginLeft: "2.5rem" }}>No tasks for today.</p>
             )}
           </div>
         )}
@@ -229,7 +254,7 @@ export default function App() {
                     style={{
                       padding: "0.75rem",
                       marginBottom: "0.75rem",
-                     
+
                       position: "relative",
                       background: "#fff",
                     }}
@@ -326,9 +351,12 @@ export default function App() {
             <h3 style={{ marginLeft: "2.5rem" }}>Upcoming Tasks</h3>
             {upcomingTasks.length > 0 ? (
               upcomingTasks.map((t) => (
-                <div key={t.id}
-                style={{
-            marginLeft: "2.5rem"}}>
+                <div
+                  key={t.id}
+                  style={{
+                    marginLeft: "2.5rem",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={t.completed}
@@ -342,7 +370,7 @@ export default function App() {
                 </div>
               ))
             ) : (
-              <p style={{marginLeft: "2.5rem"}}>No upcoming tasks.</p>
+              <p style={{ marginLeft: "2.5rem" }}>No upcoming tasks.</p>
             )}
           </div>
         )}
@@ -351,9 +379,12 @@ export default function App() {
           <div>
             <h3 style={{ marginLeft: "2.5rem" }}>Completed Tasks</h3>
             {completedTasks.map((t) => (
-              <div key={t.id}
-              style={{
-            marginLeft: "2.5rem"}}>
+              <div
+                key={t.id}
+                style={{
+                  marginLeft: "2.5rem",
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={t.completed}
@@ -392,6 +423,40 @@ export default function App() {
             <li>You added a task</li>
             <li>You updated a due date</li>
           </ul>
+        </div>
+      )}
+
+      {/* 🔁 UNDO Snackbar */}
+      {showUndo && recentlyCompleted && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#333",
+            color: "#fff",
+            padding: "1rem 2rem",
+            borderRadius: "8px",
+            zIndex: 1000,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+          }}
+        >
+          Task <strong>{recentlyCompleted.title}</strong> marked as completed.
+          <button
+            onClick={handleUndo}
+            style={{
+              marginLeft: "1rem",
+              padding: "0.5rem 1rem",
+              backgroundColor: "#ff5252",
+              color: "#fff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            Undo
+          </button>
         </div>
       )}
 

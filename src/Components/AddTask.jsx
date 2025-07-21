@@ -286,7 +286,7 @@ export default function AddTask({
                   <Button
                     icon="pi pi-arrow-right"
                     className="p-button-text p-button-sm"
-                    style={{ marginLeft: "0.5rem" }}
+                    style={{ marginLeft: "0.5rem" , color: "grey"}}
                     onClick={() => handleAddComment(index)}
                     disabled={!t.commentInput?.trim()}
                   />

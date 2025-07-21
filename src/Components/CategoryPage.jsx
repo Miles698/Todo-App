@@ -250,7 +250,7 @@ const CategoryPage = ({
                     <Button
                       icon="pi pi-arrow-right"
                       className="p-button-text p-button-sm"
-                      style={{ marginLeft: "0.5rem" }}
+                      style={{ marginLeft: "0.5rem" , color: "grey" }}
                       onClick={() => handleAddComment(globalIdx)}
                       disabled={!t.commentInput?.trim()}
                     />

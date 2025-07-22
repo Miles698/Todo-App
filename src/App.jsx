@@ -9,6 +9,15 @@ import { Calendar } from "primereact/calendar";
 import LabelsFeaturesSection from "./Components/LabelsFeaturesSection";
 import CategoryPage from "./Components/CategoryPage";
 import "./App.css";
+import { db } from "./firebase";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  updateDoc,
+  doc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
@@ -20,6 +29,8 @@ export default function App() {
   const [customCategories, setCustomCategories] = useState([]);
   const [recentlyCompleted, setRecentlyCompleted] = useState(null);
   const [showUndo, setShowUndo] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingText, setEditingText] = useState("");
 
   const isToday = (isoDateStr) => {
     const date = new Date(isoDateStr);
@@ -82,50 +93,137 @@ export default function App() {
     return matchText && matchDate;
   });
 
-  const handleAddTask = (newTask) => {
+  const handleAddTask = async (newTask) => {
     const taskToAdd = {
       ...newTask,
-      id: Date.now(),
       completed: false,
       inboxOnly: activeTab === "Inbox",
+      createdAt: serverTimestamp(),
     };
 
-    // 🛠 Assign project tag based on current tab
-    if (customCategories.includes(activeTab)) {
-      taskToAdd.projects = [`#${activeTab}`];
-    } else if (!taskToAdd.projects || taskToAdd.projects.length === 0) {
-      taskToAdd.projects = ["#Inbox"];
+    if (!taskToAdd.projects || taskToAdd.projects.length === 0) {
+      taskToAdd.projects = customCategories.includes(activeTab)
+        ? [`#${activeTab}`]
+        : ["#Inbox"];
     }
 
-    setTasks((prev) => [...prev, taskToAdd]);
-  };
-
-  const handleCompleteTask = (id) => {
-    const updatedTasks = tasks.map((task) =>
-      task.id === id ? { ...task, completed: !task.completed } : task
-    );
-    setTasks(updatedTasks);
-
-    const justCompleted = tasks.find((task) => task.id === id);
-    if (!justCompleted.completed) {
-      setRecentlyCompleted(justCompleted);
-      setShowUndo(true);
-
-      setTimeout(() => {
-        setShowUndo(false);
-        setRecentlyCompleted(null);
-      }, 5000); // 5 seconds to undo
+    try {
+      await addDoc(collection(db, "tasks"), taskToAdd);
+    } catch (err) {
+      console.error("Error adding task to Firestore:", err);
     }
   };
 
-  const handleUndo = () => {
-    if (recentlyCompleted) {
-      const updatedTasks = tasks.map((task) =>
-        task.id === recentlyCompleted.id ? { ...task, completed: false } : task
+  const handleEditTask = async (id, updates) => {
+    try {
+      const taskRef = doc(db, "tasks", id);
+      await updateDoc(taskRef, updates);
+      setTasks((prevTasks) =>
+        prevTasks.map((t) => (t.id === id ? { ...t, ...updates } : t))
       );
-      setTasks(updatedTasks);
+    } catch (err) {
+      console.error("Error editing task:", err);
+    }
+  };
+
+  const handleEdit = (taskId) => {
+    const task = tasks.find((t) => t.id === taskId);
+    setEditingTaskId(taskId);
+    setEditingText(task?.title || "");
+  };
+
+  const handleSaveEdit = async (taskId, newText) => {
+    await handleEditTask(taskId, { title: newText });
+    setEditingTaskId(null);
+  };
+
+  const handleCompleteTask = async (id) => {
+  const taskRef = doc(db, "tasks", id); // ✅ Fix: define the document reference properly
+
+  await updateDoc(taskRef, { completed: true });
+
+  // ✅ Optimistically update UI
+  setTasks((prev) =>
+    prev.map((task) => (task.id === id ? { ...task, completed: true } : task))
+  );
+
+  const justCompleted = tasks.find((task) => task.id === id);
+  if (justCompleted && !justCompleted.completed) {
+    setRecentlyCompleted(justCompleted);
+    setShowUndo(true);
+
+    // Hide Undo after 5 seconds
+    setTimeout(() => {
       setShowUndo(false);
       setRecentlyCompleted(null);
+    }, 5000);
+  }
+};
+
+  const handleUndo = async () => {
+    if (recentlyCompleted) {
+      try {
+        const taskRef = doc(db, "tasks", recentlyCompleted.id);
+        await updateDoc(taskRef, { completed: false });
+      } catch (err) {
+        console.error("Undo error:", err);
+      }
+      setShowUndo(false);
+      setRecentlyCompleted(null);
+    }
+  };
+
+  const toggleTaskProperty = (taskId, property) => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, [property]: !t[property] } : t
+      )
+    );
+  };
+  const handleAddComment = async (index) => {
+    const task = tasks[index];
+    const newComment = task.commentInput?.trim();
+    if (!newComment) return;
+
+    const updatedComments = [...(task.comments || []), newComment];
+
+    await handleEditTask(task.id, {
+      comments: updatedComments,
+      commentInput: "",
+    });
+
+    setTasks((prevTasks) => {
+      const updated = [...prevTasks];
+      updated[index] = {
+        ...task,
+        comments: updatedComments,
+        commentInput: "",
+      };
+      return updated;
+    });
+  };
+
+  const handleCommentEnter = (e, index) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment(index);
+    }
+  };
+
+  const handleDateChange = async (taskId, newDate) => {
+    const isoDate = newDate.toISOString().split("T")[0]; // convert to YYYY-MM-DD
+
+    try {
+      const taskRef = doc(db, "tasks", taskId);
+      await updateDoc(taskRef, { date: isoDate });
+
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, date: isoDate, showDateEditor: false } : t
+        )
+      );
+    } catch (err) {
+      console.error("Error updating task date:", err);
     }
   };
 
@@ -153,9 +251,15 @@ export default function App() {
   }, [tasks]);
 
   useEffect(() => {
-    if (Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
+    const unsub = onSnapshot(collection(db, "tasks"), (snapshot) => {
+      const firebaseTasks = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setTasks(firebaseTasks);
+    });
+
+    return () => unsub();
   }, []);
 
   return (
@@ -194,6 +298,7 @@ export default function App() {
             setTasks={setTasks}
             handleCompleteTask={handleCompleteTask}
             onAddTask={handleAddTask}
+            onEditTask={handleEditTask}
           />
         )}
 
@@ -308,7 +413,13 @@ export default function App() {
                         <InputText
                           value={t.commentInput || ""}
                           onChange={(e) =>
-                            handleCommentChange(e.target.value, t.id)
+                            setTasks((prev) =>
+                              prev.map((task) =>
+                                task.id === t.id
+                                  ? { ...task, commentInput: e.target.value }
+                                  : task
+                              )
+                            )
                           }
                           onKeyDown={(e) =>
                             e.key === "Enter" && handleAddComment(t.id)
@@ -407,10 +518,12 @@ export default function App() {
 
         {customCategories.includes(activeTab) && (
           <CategoryPage
-            categoryName={activeTab} // ✅ Pass this prop!
+            categoryName={activeTab}
             tasks={tasks}
             setTasks={setTasks}
             handleCompleteTask={handleCompleteTask}
+            handleEditTask={handleEditTask} // ✅ Required
+            onAddTask={handleAddTask} // ✅ Required for new tasks
             defaultProject={activeTab}
           />
         )}

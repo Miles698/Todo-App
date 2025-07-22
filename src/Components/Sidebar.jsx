@@ -32,7 +32,11 @@ const Sidebar = ({
   ).sort();
 
   useEffect(() => {
-    setCustomCategories(dynamicCategories);
+    if (
+      JSON.stringify(customCategories) !== JSON.stringify(dynamicCategories)
+    ) {
+      setCustomCategories(dynamicCategories);
+    }
   }, [tasks]);
 
   const menuItems = [
@@ -157,7 +161,10 @@ const Sidebar = ({
               return (
                 <li
                   key={category}
-                  onClick={() => setActiveTab(category)}
+                  onClick={() => {
+                    setActiveTab(category);
+                    if (onCategoryClick) onCategoryClick(category);
+                  }}
                   className={activeTab === category ? "active" : ""}
                   style={{ cursor: "pointer" }}
                 >

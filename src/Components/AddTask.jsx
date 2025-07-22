@@ -1,4 +1,4 @@
-// your imports stay the same...
+// ✅ Fixed AddTask.jsx
 import React, { useRef, useState, useEffect } from "react";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
@@ -7,13 +7,14 @@ import { Chip } from "primereact/chip";
 import { Calendar } from "primereact/calendar";
 import { Menu } from "primereact/menu";
 import { Divider } from "primereact/divider";
-import "./AddTask.css";
 import DescriptionOverlay from "./DescriptionOverlay";
 import { normalizeProject } from "./utils";
+import "./AddTask.css";
 
 export default function AddTask({
   tasks,
-  setTasks,
+  onAddTask,
+  onEditTask,
   handleCompleteTask,
   defaultProject,
   hideHeading = false,
@@ -21,7 +22,6 @@ export default function AddTask({
   const [task, setTask] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState(new Date());
-  const [showCalendar, setShowCalendar] = useState(false);
   const [priority, setPriority] = useState({
     level: 4,
     label: "⚪ Priority 4",
@@ -33,11 +33,10 @@ export default function AddTask({
   const [projects, setProjects] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
-
-  const menu = useRef(null);
-  const reminderMenu = useRef(null);
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
   const [currentDescription, setCurrentDescription] = useState("");
+  const menu = useRef(null);
+  const reminderMenu = useRef(null);
 
   useEffect(() => {
     if (!isEditing && projects.length === 0) {
@@ -51,21 +50,40 @@ export default function AddTask({
   };
 
   const toggleTaskProperty = (index, key) => {
-    const updated = [...tasks];
-    updated[index] = {
-      ...updated[index],
-      [key]: !updated[index][key],
+    const task = tasks[index];
+    if (task) {
+      onEditTask(task.id, { [key]: !task[key] });
+    }
+  };
+
+  const saveEditedTask = async () => {
+    const updatedTask = {
+      title: task,
+      description,
+      date: dueDate?.toISOString(),
+      priority,
+      reminder:
+        reminder === "datetime"
+          ? reminderTime?.toISOString()
+          : reminder === "before"
+          ? "10 minutes before"
+          : null,
+      projects,
     };
-    setTasks(updated);
+    await onEditTask(tasks[editTaskIndex].id, updatedTask);
+    setShowForm(false);
+    setIsEditing(false);
+    setEditTaskIndex(null);
   };
 
   const handleAddComment = (index) => {
-    const updated = [...tasks];
-    const text = updated[index].commentInput?.trim();
-    if (text) {
-      updated[index].comments.push(text);
-      updated[index].commentInput = "";
-      setTasks(updated);
+    const task = tasks[index];
+    if (task && task.commentInput?.trim()) {
+      const updatedComments = [
+        ...(task.comments || []),
+        task.commentInput.trim(),
+      ];
+      onEditTask(task.id, { comments: updatedComments, commentInput: "" });
     }
   };
 
@@ -84,7 +102,6 @@ export default function AddTask({
 
     const extractedProjects = extractProjectsFromTask(task);
     const cleanedTitle = task.replace(/#\w+/g, "").trim();
-
     const finalProjects =
       extractedProjects.length > 0
         ? extractedProjects
@@ -93,7 +110,6 @@ export default function AddTask({
         : [normalizeProject(defaultProject)];
 
     const newTask = {
-      id: Date.now(),
       title: cleanedTitle,
       description,
       projects: finalProjects,
@@ -102,7 +118,9 @@ export default function AddTask({
       priority,
       reminder:
         reminder === "datetime"
-          ? reminderTime?.toISOString()
+          ? reminderTime instanceof Date
+            ? reminderTime.toISOString()
+            : null
           : reminder === "before"
           ? "10 minutes before"
           : null,
@@ -115,20 +133,22 @@ export default function AddTask({
     };
 
     if (isEditing && editTaskIndex !== null) {
-      const updated = [...tasks];
-      updated[editTaskIndex] = newTask;
-      setTasks(updated);
+      const id = tasks[editTaskIndex].id;
+      onEditTask(id, newTask);
     } else {
-      setTasks((prev) => [...prev, newTask]);
+      onAddTask(newTask);
     }
 
+    resetForm();
+  };
+
+  const resetForm = () => {
     setTask("");
     setDescription("");
     setPriority({ level: 4, label: "⚪ Priority 4" });
     setReminder(null);
     setReminderTime(null);
     setDueDate(new Date());
-    setShowCalendar(false);
     setShowForm(false);
     setEditingProject(false);
     setProjects([normalizeProject(defaultProject)]);
@@ -200,7 +220,8 @@ export default function AddTask({
                   {t.projects?.join(", ")} • {t.priority.label}
                   {t.reminder && (
                     <>
-                      {" • ⏰ "}
+                      {" "}
+                      • ⏰{" "}
                       {t.reminder === "10 minutes before"
                         ? t.reminder
                         : new Date(t.reminder).toLocaleString()}
@@ -208,12 +229,10 @@ export default function AddTask({
                   )}
                 </div>
               </span>
-
               <div className="hover-actions">
                 <i
                   className="pi pi-pencil"
                   title="Edit Task"
-                  style={{ marginRight: "0.5rem", cursor: "pointer" }}
                   onClick={() => {
                     setTask(t.title + " " + t.projects?.join(" "));
                     setDescription(t.description);
@@ -240,13 +259,11 @@ export default function AddTask({
                 <i
                   className="pi pi-calendar"
                   title="Change Date"
-                  style={{ marginRight: "0.5rem", cursor: "pointer" }}
                   onClick={() => toggleTaskProperty(index, "showDateEditor")}
                 />
                 <i
                   className="pi pi-comment"
                   title="Toggle Comments"
-                  style={{ cursor: "pointer" }}
                   onClick={() => toggleTaskProperty(index, "showComments")}
                 />
               </div>
@@ -255,12 +272,9 @@ export default function AddTask({
             {t.showDateEditor && (
               <Calendar
                 value={new Date(t.date)}
-                onChange={(e) => {
-                  const updated = [...tasks];
-                  updated[index].date = e.value.toISOString();
-                  updated[index].showDateEditor = false;
-                  setTasks(updated);
-                }}
+                onChange={(e) =>
+                  onEditTask(t.id, { date: e.value.toISOString() })
+                }
                 showTime
                 hourFormat="12"
               />
@@ -273,12 +287,10 @@ export default function AddTask({
                   style={{ width: "100%", display: "flex" }}
                 >
                   <InputText
-                    value={t.commentInput}
-                    onChange={(e) => {
-                      const updated = [...tasks];
-                      updated[index].commentInput = e.target.value;
-                      setTasks(updated);
-                    }}
+                    value={t.commentInput || ""}
+                    onChange={(e) =>
+                      onEditTask(t.id, { commentInput: e.target.value })
+                    }
                     placeholder="Add a comment..."
                     onKeyDown={(e) => handleCommentEnter(e, index)}
                     style={{ width: "100%" }}
@@ -286,12 +298,11 @@ export default function AddTask({
                   <Button
                     icon="pi pi-arrow-right"
                     className="p-button-text p-button-sm"
-                    style={{ marginLeft: "0.5rem" , color: "grey"}}
+                    style={{ marginLeft: "0.5rem", color: "grey" }}
                     onClick={() => handleAddComment(index)}
                     disabled={!t.commentInput?.trim()}
                   />
                 </span>
-
                 {t.comments?.length > 0 && (
                   <ul className="comment-list">
                     {t.comments.map((c, i) => (
@@ -303,7 +314,6 @@ export default function AddTask({
                 )}
               </div>
             )}
-
             <Divider />
           </div>
         ))}
@@ -334,38 +344,24 @@ export default function AddTask({
           />
 
           <div className="task-tags">
-            {!showCalendar ? (
-              <Chip
-                label={dueDate.toLocaleDateString()}
-                removable
-                onRemove={() => setShowCalendar(true)}
-                icon="pi pi-calendar"
-              />
-            ) : (
-              <Calendar
-                value={dueDate}
-                onChange={(e) => {
-                  setDueDate(e.value);
-                  setShowCalendar(false);
-                }}
-                showIcon
-              />
-            )}
-
+            <Chip
+              label={dueDate.toLocaleDateString()}
+              removable
+              onRemove={() => setShowCalendar(true)}
+              icon="pi pi-calendar"
+            />
             <Menu model={priorityOptions} popup ref={menu} />
             <Chip
               label={priority.label}
               onClick={(e) => menu.current.toggle(e)}
               className="priority-chip"
             />
-
             <Menu model={reminderOptions} popup ref={reminderMenu} />
             <Chip
               label="Reminders"
               icon="pi pi-bell"
               onClick={(e) => reminderMenu.current.toggle(e)}
             />
-
             {reminder === "datetime" && (
               <Calendar
                 showTime
@@ -400,26 +396,11 @@ export default function AddTask({
                 }}
               />
             )}
-
             <div className="form-buttons">
               <Button
                 label="Cancel"
                 className="p-button-text"
-                onClick={() => {
-                  setTask("");
-                  setDescription("");
-                  setReminder(null);
-                  setReminderTime(null);
-                  setDueDate(new Date());
-                  setPriority({ level: 4, label: "⚪ Priority 4" });
-                  setShowForm(false);
-                  setEditingProject(false);
-                  setProjects([
-                    defaultProject ? `#${defaultProject}` : "#Inbox",
-                  ]);
-                  setIsEditing(false);
-                  setEditTaskIndex(null);
-                }}
+                onClick={resetForm}
               />
               <Button
                 label={isEditing ? "Update Task" : "Add Task"}

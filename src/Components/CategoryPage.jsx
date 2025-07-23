@@ -336,42 +336,44 @@ const CategoryPage = ({
             className="task-description-input"
           />
           <div className="task-tags">
-            {!showCalendar ? (
-              <Chip
-                label={dueDate.toLocaleDateString()}
-                removable
-                onRemove={() => setShowCalendar(true)}
-                icon="pi pi-calendar"
-              />
-            ) : (
-              <Calendar
-                value={dueDate}
-                onChange={(e) => {
-                  setDueDate(e.value);
-                  setShowCalendar(false);
-                }}
-                showIcon
-              />
-            )}
+            <Calendar
+              value={dueDate}
+              onChange={(e) => setDueDate(e.value)}
+              placeholder="Select due date"
+              showIcon
+              dateFormat="dd/mm/yy"
+            />
+
+            {/* Priority Menu */}
             <Menu model={priorityOptions} popup ref={menu} />
             <Chip
               label={priority.label}
-              onClick={(e) => menu.current.toggle(e)}
+              onClick={(e) => menu.current?.toggle(e)}
               className="priority-chip"
             />
+
+            {/* Reminder Menu */}
             <Menu model={reminderOptions} popup ref={reminderMenu} />
             <Chip
-              label="Reminders"
+              label={
+                reminder === "datetime" && reminderTime
+                  ? new Date(reminderTime).toLocaleString()
+                  : reminder || "Reminders"
+              }
               icon="pi pi-bell"
-              onClick={(e) => reminderMenu.current.toggle(e)}
+              onClick={(e) => reminderMenu.current?.toggle(e)}
             />
+
+            {/* Calendar for custom reminder */}
             {reminder === "datetime" && (
-              <Calendar
-                showTime
-                value={reminderTime}
-                onChange={(e) => setReminderTime(e.value)}
-                placeholder="Select reminder time"
-              />
+              <div style={{ marginTop: "0.5rem" }}>
+                <Calendar
+                  value={reminderTime}
+                  onChange={(e) => setReminderTime(e.value)}
+                  showTime
+                  placeholder="Select reminder time"
+                />
+              </div>
             )}
           </div>
           <div className="task-footer">

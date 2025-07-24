@@ -1,4 +1,4 @@
-// ✅ Fully Updated AddTask.jsx with Fix for My Projects Dynamic Listing and Calendar
+// ✅ Fully Updated AddTask.jsx
 import React, { useRef, useState, useEffect } from "react";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
@@ -31,6 +31,9 @@ export default function AddTask({
   const [showForm, setShowForm] = useState(true);
   const [editingProject, setEditingProject] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [allProjects, setAllProjects] = useState(() =>
+    Array.from(new Set(tasks.flatMap((t) => t.projects || [])))
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
@@ -119,6 +122,10 @@ export default function AddTask({
       onAddTask(newTask);
     }
 
+    // ✅ Update allProjects with any new tags
+    const uniqueProjects = new Set([...allProjects, ...finalProjects]);
+    setAllProjects(Array.from(uniqueProjects));
+
     resetForm();
   };
 
@@ -185,12 +192,7 @@ export default function AddTask({
     },
   ];
 
-  // ✅ Dynamically extract all unique project tags from tasks
-  const myProjects = Array.from(
-    new Set(
-      tasks.flatMap((t) => t.projects || []).filter((p) => p && p !== "#Inbox")
-    )
-  );
+  const myProjects = allProjects.filter((p) => p && p !== "#Inbox");
 
   return (
     <div className="add-task-wrapper">
@@ -221,10 +223,15 @@ export default function AddTask({
               >
                 {t.title}
                 <div className="task-meta">
-                  {new Date(t.date).toLocaleDateString()} • {t.projects?.join(", ")} • {t.priority.label}
+                  {new Date(t.date).toLocaleDateString()} •{" "}
+                  {t.projects?.join(", ")} • {t.priority.label}
                   {t.reminder && (
                     <>
-                      {" "}• ⏰ {t.reminder === "10 minutes before" ? t.reminder : new Date(t.reminder).toLocaleString()}
+                      {" "}
+                      • ⏰{" "}
+                      {t.reminder === "10 minutes before"
+                        ? t.reminder
+                        : new Date(t.reminder).toLocaleString()}
                     </>
                   )}
                 </div>
@@ -238,8 +245,18 @@ export default function AddTask({
                     setDescription(t.description);
                     setDueDate(new Date(t.date));
                     setPriority(t.priority);
-                    setReminder(t.reminder === "10 minutes before" ? "before" : t.reminder ? "datetime" : null);
-                    setReminderTime(t.reminder && t.reminder !== "10 minutes before" ? new Date(t.reminder) : null);
+                    setReminder(
+                      t.reminder === "10 minutes before"
+                        ? "before"
+                        : t.reminder
+                        ? "datetime"
+                        : null
+                    );
+                    setReminderTime(
+                      t.reminder && t.reminder !== "10 minutes before"
+                        ? new Date(t.reminder)
+                        : null
+                    );
                     setProjects(t.projects);
                     setIsEditing(true);
                     setEditTaskIndex(index);
@@ -258,6 +275,7 @@ export default function AddTask({
                 />
               </div>
             </div>
+
             {t.showDateEditor && (
               <Calendar
                 value={new Date(t.date)}
@@ -296,12 +314,12 @@ export default function AddTask({
                   <ul className="comment-list">
                     {t.comments.map((c, i) => (
                       <li key={i} className="comment-item">
-                         {c}
+                        {c}
                       </li>
                     ))}
                   </ul>
                 )}
-                 </div>
+              </div>
             )}
             <Divider />
           </div>
@@ -380,44 +398,81 @@ export default function AddTask({
                 onClick={() => setEditingProject(true)}
               />
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div className="project-dropdown">
                 <InputText
                   autoFocus
-                  value={projects.join(", ")}
+                  placeholder="Type a project name"
+                  value={projects.join(", ").replace("#", "")}
                   onChange={(e) =>
-                    setProjects(
-                      e.target.value
-                        .split(/,\s*/)
-                        .map((p) => (p.startsWith("#") ? p : "#" + p))
-                    )
+                    setProjects([`#${e.target.value.trim().replace("#", "")}`])
                   }
-                  onBlur={() => setEditingProject(false)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") setEditingProject(false);
+                    if (e.key === "Enter") {
+                      setEditingProject(false);
+                    }
                   }}
                 />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                  {myProjects.map((proj) => (
-                    <Chip
-                      key={proj}
-                      label={proj}
-                      icon="pi pi-folder"
-                      className="p-chip-sm"
-                      onClick={() => {
-                        if (!projects.includes(proj)) {
-                          setProjects([...projects, proj]);
-                          setEditingProject(false);
-                        }
-                      }}
+
+                <ul className="project-list">
+                  <li
+                    className={`project-item ${
+                      projects.includes("#Inbox") ? "selected" : ""
+                    }`}
+                    onClick={() => {
+                      setProjects(["#Inbox"]);
+                      setEditingProject(false);
+                    }}
+                  >
+                    <i
+                      className="pi pi-inbox"
+                      style={{ marginRight: "0.5rem" }}
                     />
+                    Inbox
+                    {projects.includes("#Inbox") && (
+                      <span className="check">✔</span>
+                    )}
+                  </li>
+
+                  <li className="projects-heading">
+                    <i
+                      className="pi pi-folder"
+                      style={{ marginRight: "0.5rem" }}
+                    />
+                    My Projects
+                  </li>
+
+                  {myProjects.map((proj) => (
+                    <li
+                      key={proj}
+                      className={`project-item ${
+                        projects.includes(proj) ? "selected" : ""
+                      }`}
+                      onClick={() => {
+                        setProjects([proj]);
+                        setEditingProject(false);
+                      }}
+                    >
+                      {proj}
+                      {projects.includes(proj) && (
+                        <span className="check">✔</span>
+                      )}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
             <div className="form-buttons">
-              <Button label="Cancel" className="p-button-text" onClick={resetForm} />
-              <Button label={isEditing ? "Update Task" : "Add Task"} className="p-button-danger" onClick={handleAddClick} />
+              <Button
+                label="Cancel"
+                className="p-button-text"
+                onClick={resetForm}
+              />
+              <Button
+                label={isEditing ? "Update Task" : "Add Task"}
+                className="p-button-danger"
+                onClick={handleAddClick}
+              />
             </div>
           </div>
         </div>

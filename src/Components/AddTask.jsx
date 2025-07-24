@@ -9,6 +9,8 @@ import { Menu } from "primereact/menu";
 import { Divider } from "primereact/divider";
 import DescriptionOverlay from "./DescriptionOverlay";
 import { normalizeProject } from "./utils";
+import { OverlayPanel } from "primereact/overlaypanel";
+
 import "./AddTask.css";
 
 export default function AddTask({
@@ -18,6 +20,7 @@ export default function AddTask({
   handleCompleteTask,
   defaultProject,
   hideHeading = false,
+  allProjects = [],
 }) {
   const [task, setTask] = useState("");
   const [description, setDescription] = useState("");
@@ -31,15 +34,42 @@ export default function AddTask({
   const [showForm, setShowForm] = useState(true);
   const [editingProject, setEditingProject] = useState(false);
   const [projects, setProjects] = useState([]);
-  const [allProjects, setAllProjects] = useState(() =>
-    Array.from(new Set(tasks.flatMap((t) => t.projects || [])))
-  );
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
   const [currentDescription, setCurrentDescription] = useState("");
   const menu = useRef(null);
   const reminderMenu = useRef(null);
+  const [selectedProject, setSelectedProject] = useState("#Inbox");
+  const [filterText, setFilterText] = useState("");
+  const op = useRef(null);
+
+  // Extract unique custom projects from tasks (excluding #Inbox)
+  const myProjects = allProjects.filter((p) => p && p !== "#Inbox");
+  
+
+
+  const handleProjectClick = (e) => {
+    op.current.toggle(e);
+  };
+
+  const filteredProjects = myProjects.filter((project) =>
+    project.toLowerCase().includes(filterText.toLowerCase())
+  );
+
+  const handleSelectProject = (project) => {
+    setSelectedProject(project);
+
+    // 👇 If inbox selected, assign all "myProjects" as associated projects
+    if (project === "#Inbox") {
+      setProjects(["#Inbox", ...myProjects]);
+    } else {
+      setProjects([project]);
+    }
+
+    op.current.hide();
+  };
 
   useEffect(() => {
     if (!isEditing && projects.length === 0) {
@@ -191,8 +221,6 @@ export default function AddTask({
       },
     },
   ];
-
-  const myProjects = allProjects.filter((p) => p && p !== "#Inbox");
 
   return (
     <div className="add-task-wrapper">
@@ -390,37 +418,37 @@ export default function AddTask({
             )}
           </div>
 
-          <div className="task-footer">
-            {!editingProject ? (
+          <div style={{ padding: "1rem" }}>
+            <div className="task-footer">
               <Chip
-                label={projects.join(", ")}
+                label={selectedProject}
                 icon="pi pi-folder"
-                onClick={() => setEditingProject(true)}
+                onClick={handleProjectClick}
+                style={{ cursor: "pointer" }}
               />
-            ) : (
-              <div className="project-dropdown">
-                <InputText
-                  autoFocus
-                  placeholder="Type a project name"
-                  value={projects.join(", ").replace("#", "")}
-                  onChange={(e) =>
-                    setProjects([`#${e.target.value.trim().replace("#", "")}`])
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      setEditingProject(false);
-                    }
-                  }}
-                />
 
-                <ul className="project-list">
-                  <li
-                    className={`project-item ${
-                      projects.includes("#Inbox") ? "selected" : ""
-                    }`}
-                    onClick={() => {
-                      setProjects(["#Inbox"]);
-                      setEditingProject(false);
+              <OverlayPanel ref={op} dismissable>
+                <div style={{ padding: "0.5rem", width: "250px" }}>
+                  <InputText
+                    placeholder="Type a project name"
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    className="p-inputtext-sm"
+                    style={{ width: "100%", marginBottom: "0.5rem" }}
+                  />
+
+                  <div
+                    className="p-menuitem"
+                    onClick={() => handleSelectProject("#Inbox")}
+                    style={{
+                      cursor: "pointer",
+                      padding: "0.5rem",
+                      backgroundColor:
+                        selectedProject === "#Inbox"
+                          ? "#f0f0f0"
+                          : "transparent",
+                      fontWeight:
+                        selectedProject === "#Inbox" ? "bold" : "normal",
                     }}
                   >
                     <i
@@ -428,39 +456,46 @@ export default function AddTask({
                       style={{ marginRight: "0.5rem" }}
                     />
                     Inbox
-                    {projects.includes("#Inbox") && (
-                      <span className="check">✔</span>
+                    {selectedProject === "#Inbox" && (
+                      <i className="pi pi-check" style={{ float: "right" }} />
                     )}
-                  </li>
+                  </div>
 
-                  <li className="projects-heading">
-                    <i
-                      className="pi pi-folder"
-                      style={{ marginRight: "0.5rem" }}
-                    />
+                  <div style={{ margin: "0.5rem 0", fontWeight: "bold" }}>
                     My Projects
-                  </li>
+                  </div>
 
-                  {myProjects.map((proj) => (
-                    <li
-                      key={proj}
-                      className={`project-item ${
-                        projects.includes(proj) ? "selected" : ""
-                      }`}
-                      onClick={() => {
-                        setProjects([proj]);
-                        setEditingProject(false);
+                  {filteredProjects.length === 0 && (
+                    <div style={{ padding: "0.5rem", color: "#888" }}>
+                      No projects found.
+                    </div>
+                  )}
+
+                  {filteredProjects.map((project, index) => (
+                    <div
+                      key={index}
+                      className="p-menuitem"
+                      onClick={() => handleSelectProject(project)}
+                      style={{
+                        cursor: "pointer",
+                        padding: "0.5rem",
+                        backgroundColor:
+                          selectedProject === project
+                            ? "#f0f0f0"
+                            : "transparent",
+                        fontWeight:
+                          selectedProject === project ? "bold" : "normal",
                       }}
                     >
-                      {proj}
-                      {projects.includes(proj) && (
-                        <span className="check">✔</span>
+                      {project}
+                      {selectedProject === project && (
+                        <i className="pi pi-check" style={{ float: "right" }} />
                       )}
-                    </li>
+                    </div>
                   ))}
-                </ul>
-              </div>
-            )}
+                </div>
+              </OverlayPanel>
+            
 
             <div className="form-buttons">
               <Button
@@ -475,6 +510,7 @@ export default function AddTask({
               />
             </div>
           </div>
+        </div>
         </div>
       )}
 

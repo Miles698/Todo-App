@@ -204,6 +204,10 @@ export default function App() {
     });
   };
 
+  const allProjects = Array.from(
+  new Set(tasks.flatMap((t) => t.projects || []))
+);
+
   const handleCommentEnter = (e, index) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -288,6 +292,7 @@ export default function App() {
           marginRight: notificationsOpen ? "300px" : 0,
         }}
       >
+        
         {activeTab === "Add Task" && (
           <AddTask
             tasks={tasks.filter(
@@ -300,6 +305,10 @@ export default function App() {
             handleCompleteTask={handleCompleteTask}
             onAddTask={handleAddTask}
             onEditTask={handleEditTask}
+            allProjects={Array.from(
+    new Set(tasks.flatMap((task) => task.projects || []))
+  )}
+            
           />
         )}
 

@@ -33,13 +33,21 @@ export default function App() {
   const [editingText, setEditingText] = useState("");
   
 
-  const isToday = (isoDateStr) => {
-    const date = new Date(isoDateStr);
-    const today = new Date();
-    date.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    return date.getTime() === today.getTime();
-  };
+  const today = new Date();
+const isToday = (someDate) =>
+  someDate.getDate() === today.getDate() &&
+  someDate.getMonth() === today.getMonth() &&
+  someDate.getFullYear() === today.getFullYear();
+
+const todayTasks = tasks.filter((t) => {
+  return (
+    !t.completed &&
+    !t.inboxOnly &&
+    t.date &&
+    isToday(new Date(t.date)) // ✅ include tasks even with subcategories
+  );
+});
+
 
   const isFutureDate = (isoDateStr) => {
     const taskDate = new Date(isoDateStr);
@@ -49,16 +57,7 @@ export default function App() {
     return taskDate > today;
   };
 
-  const todayTasks = tasks.filter(
-    (task) =>
-      !task.completed &&
-      task.date &&
-      isToday(task.date) &&
-      (!task.projects ||
-        !task.projects.some((p) =>
-          customCategories.includes(p.replace("#", ""))
-        ))
-  );
+  
 
   const upcomingTasks = tasks.filter(
     (task) =>
@@ -214,6 +213,31 @@ export default function App() {
       handleAddComment(index);
     }
   };
+  const categorizedProjects = {};
+
+tasks.forEach((task) => {
+  (task.projects || []).forEach((p) => {
+    const normalized = p.trim().replace(/^#+/, ""); // remove extra #
+    const [main, sub] = normalized.split("/");
+
+    const mainCategory = `#${main}`;
+    const subCategory = sub?.trim() || null;
+
+    if (!categorizedProjects[mainCategory]) {
+      categorizedProjects[mainCategory] = new Set();
+    }
+
+    if (subCategory) {
+      categorizedProjects[mainCategory].add(subCategory);
+    }
+  });
+});
+
+// Convert Sets to arrays
+const finalCategories = Object.fromEntries(
+  Object.entries(categorizedProjects).map(([k, v]) => [k, Array.from(v)])
+);
+
 
   const handleDateChange = async (taskId, newDate) => {
     const isoDate = newDate.toISOString().split("T")[0]; // convert to YYYY-MM-DD

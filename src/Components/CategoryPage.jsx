@@ -54,19 +54,83 @@ const CategoryPage = ({
   };
 
   const extractProjectsFromTask = (text) => {
-    const matches = text.match(/#\w+/g);
-    return matches ? [...new Set(matches.map(normalizeProject))] : [];
+    const hashtags = text.match(/#\w+/g) || [];
+    const subcats = text.match(/\/\w+/g) || [];
+    const allProjects = [...hashtags, ...subcats];
+    return allProjects.length > 0
+      ? [...new Set(allProjects.map(normalizeProject))]
+      : [];
+  };
+
+  const cleanTaskTitle = (text) => {
+    return text.replace(/[#/]\w+/g, "").trim();
+  };
+
+  const parseTimeString = (str) => {
+    const match = str.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+    if (!match) return null;
+
+    let hour = parseInt(match[1], 10);
+    const minute = parseInt(match[2] || "0", 10);
+    const meridian = match[3]?.toLowerCase();
+
+    if (meridian === "pm" && hour < 12) hour += 12;
+    if (meridian === "am" && hour === 12) hour = 0;
+
+    return { hour, minute };
   };
 
   const handleAddClick = async () => {
     const extractedProjects = extractProjectsFromTask(task);
-    const taskProjects =
-      extractedProjects.length > 0 ? extractedProjects : projects;
+    let cleanedTitle = cleanTaskTitle(task);
+    let taskProjects = [...projects];
+
+    const subcatMatch = task.match(/\/(\w+)/);
+    if (subcatMatch) {
+      const subcategory = subcatMatch[1];
+      const baseCategory = normalizeProject(categoryName);
+      const fullProject = `${baseCategory}/${subcategory}`;
+      taskProjects = [fullProject];
+    }
+
+    // ⏰ Extract time from "from 3:00pm to 5:30pm"
+    let startTime = null;
+    let endTime = null;
+    const timeMatch = cleanedTitle.match(
+      /from\s+([\d:apm\s]+)\s+to\s+([\d:apm\s]+)/i
+    );
+    if (timeMatch) {
+      startTime = parseTimeString(timeMatch[1].trim());
+      endTime = parseTimeString(timeMatch[2].trim());
+      cleanedTitle = cleanedTitle
+        .replace(timeMatch[0], "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    let startDate = new Date(dueDate);
+    let endDate = new Date(dueDate);
+
+    if (startTime) {
+      startDate.setHours(startTime.hour);
+      startDate.setMinutes(startTime.minute);
+      startDate.setSeconds(0);
+      startDate.setMilliseconds(0);
+    }
+
+    if (endTime) {
+      endDate.setHours(endTime.hour);
+      endDate.setMinutes(endTime.minute);
+      endDate.setSeconds(0);
+      endDate.setMilliseconds(0);
+    }
 
     const updatedTask = {
-      title: task,
+      title: cleanedTitle,
       description,
       date: dueDate.toISOString(),
+      start: startTime ? startDate.toISOString() : null,
+      end: endTime ? endDate.toISOString() : null,
       priority,
       reminder:
         reminder === "before"
@@ -84,7 +148,6 @@ const CategoryPage = ({
       await onAddTask(updatedTask);
     }
 
-    // Reset form
     resetForm();
   };
 
@@ -195,6 +258,24 @@ const CategoryPage = ({
                   }}
                 >
                   {t.title}
+
+                  {/* Show time range if available */}
+                  {t.start && t.end && (
+                    <div className="text-sm text-gray-500 mt-1">
+                      ⏰{" "}
+                      {new Date(t.start).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}{" "}
+                      –{" "}
+                      {new Date(t.end).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  )}
+
+                  {/* Existing metadata */}
                   <div className="task-meta">
                     {new Date(t.date).toLocaleDateString()} •{" "}
                     {t.projects?.join(", ")} • {t.priority.label}
@@ -209,6 +290,7 @@ const CategoryPage = ({
                     )}
                   </div>
                 </span>
+
                 <div className="hover-actions">
                   <i
                     className="pi pi-pencil"

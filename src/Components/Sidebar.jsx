@@ -21,6 +21,7 @@ const Sidebar = ({
   const [categoryDialogVisible, setCategoryDialogVisible] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [projectsExpanded, setProjectsExpanded] = useState(true);
+  const [parentCategoryForSubcat, setParentCategoryForSubcat] = useState(null);
 
   // Extract unique project tags from tasks dynamically
   const dynamicCategories = Array.from(
@@ -71,17 +72,34 @@ const Sidebar = ({
 
   const handleAddCategory = () => {
     const trimmed = newCategory.trim();
-    if (!trimmed.startsWith("#")) return;
+    if (!trimmed) return;
 
-    if (!customCategories.includes(trimmed)) {
-      const updated = [...customCategories, trimmed];
-      setCustomCategories(updated);
-      if (onCategoryClick) onCategoryClick(trimmed);
-      setActiveTab(trimmed);
+    let finalCategory = trimmed;
+
+    // If it's a subcategory, prepend '/'
+    if (parentCategoryForSubcat) {
+      if (!trimmed.startsWith("/")) {
+        finalCategory = `/${trimmed}`;
+      }
+      if (!customCategories.includes(finalCategory)) {
+        const updated = [...customCategories, finalCategory];
+        setCustomCategories(updated);
+        if (onCategoryClick) onCategoryClick(finalCategory);
+        setActiveTab(finalCategory);
+      }
+    } else {
+      if (!trimmed.startsWith("#")) return;
+      if (!customCategories.includes(trimmed)) {
+        const updated = [...customCategories, trimmed];
+        setCustomCategories(updated);
+        if (onCategoryClick) onCategoryClick(trimmed);
+        setActiveTab(trimmed);
+      }
     }
 
     setNewCategory("");
     setCategoryDialogVisible(false);
+    setParentCategoryForSubcat(null);
   };
 
   return (
@@ -147,34 +165,75 @@ const Sidebar = ({
         </div>
 
         {/* 🧾 Project List */}
+
         {projectsExpanded && (
           <ul>
-            {customCategories.map((category) => {
-              const count = tasks.filter(
-                (task) =>
-                  task.projects &&
-                  task.projects.includes(category) &&
-                  !task.completed &&
-                  !task.inboxOnly
-              ).length;
+            {customCategories
+              .filter((cat) => cat.startsWith("#") && !cat.includes("/")) // only main categories like #health
+              .map((mainCat) => {
+                const subCats = customCategories.filter((cat) =>
+                  cat.startsWith(`${mainCat}/`)
+                );
 
-              return (
-                <li
-                  key={category}
-                  onClick={() => {
-                    setActiveTab(category);
-                    if (onCategoryClick) onCategoryClick(category);
-                  }}
-                  className={activeTab === category ? "active" : ""}
-                  style={{ cursor: "pointer" }}
-                >
-                  {category}{" "}
-                  {count > 0 && (
-                    <span style={{ color: "#999" }}>({count})</span>
-                  )}
-                </li>
-              );
-            })}
+                const mainCount = tasks.filter((t) => {
+  const hasMain = t.projects?.includes(mainCat);
+  const hasSub = t.projects?.some((p) => p.startsWith(mainCat + "/"));
+  return hasMain && !hasSub && !t.completed && !t.inboxOnly;
+}).length;
+
+
+                return (
+                  <li key={mainCat}>
+                    <div
+                      onClick={() => {
+                        setActiveTab(mainCat);
+                        onCategoryClick?.(mainCat);
+                      }}
+                      className={activeTab === mainCat ? "active" : ""}
+                      style={{ cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      {mainCat}{" "}
+                      {mainCount > 0 && (
+                        <span style={{ color: "#999" }}>({mainCount})</span>
+                      )}
+                    </div>
+
+                    {/* 🔽 Show subcategories nested */}
+                    {projectsExpanded && subCats.length > 0 && (
+                      <ul style={{ paddingLeft: "1.5rem" }}>
+                        {subCats.map((subCat) => {
+                          const count = tasks.filter(
+                            (t) =>
+                              t.projects?.includes(subCat) &&
+                              !t.completed &&
+                              !t.inboxOnly
+                          ).length;
+
+                          if (count === 0) return null;
+
+                          return (
+                            <li
+                              key={subCat}
+                              onClick={() => {
+                                setActiveTab(subCat);
+                                onCategoryClick?.(subCat);
+                              }}
+                              className={activeTab === subCat ? "active" : ""}
+                              style={{ cursor: "pointer" }}
+                            >
+                              {"/" + subCat.split("/")[1]}{" "}
+
+                              {count > 0 && (
+                                <span style={{ color: "#999" }}>({count})</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
         )}
       </div>
@@ -196,6 +255,7 @@ const Sidebar = ({
             value={newCategory}
             onChange={(e) => setNewCategory(e.target.value)}
           />
+
           <div
             style={{ display: "flex", justifyContent: "flex-end", gap: "1rem" }}
           >

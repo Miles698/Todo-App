@@ -34,7 +34,7 @@ export default function AddTask({
   const [showForm, setShowForm] = useState(true);
   const [editingProject, setEditingProject] = useState(false);
   const [projects, setProjects] = useState([]);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
@@ -47,8 +47,6 @@ export default function AddTask({
 
   // Extract unique custom projects from tasks (excluding #Inbox)
   const myProjects = allProjects.filter((p) => p && p !== "#Inbox");
-  
-
 
   const handleProjectClick = (e) => {
     op.current.toggle(e);
@@ -107,26 +105,166 @@ export default function AddTask({
     resetForm();
   };
 
+  const extractTimeFromTask = (text) => {
+    const timeRegex =
+      /from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+to\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
+    const match = text.match(timeRegex);
+
+    if (!match) return { cleanedText: text, time: null };
+
+    let [, fromHour, fromMin, fromMeridiem, toHour, toMin, toMeridiem] = match;
+
+    fromHour = parseInt(fromHour);
+    fromMin = parseInt(fromMin || "0");
+    toHour = parseInt(toHour);
+    toMin = parseInt(toMin || "0");
+
+    // Handle am/pm logic
+    const applyMeridiem = (h, meridiem) => {
+      if (!meridiem) return h; // assume 24h
+      meridiem = meridiem.toLowerCase();
+      if (meridiem === "pm" && h < 12) return h + 12;
+      if (meridiem === "am" && h === 12) return 0;
+      return h;
+    };
+
+    const finalFromHour = applyMeridiem(fromHour, fromMeridiem);
+
+    const time = { hour: finalFromHour, minute: fromMin };
+
+    // Remove the matched part from title
+    const cleanedText = text.replace(timeRegex, "").replace(/\s+/g, " ").trim();
+
+    return { cleanedText, time };
+  };
+
+  function parseTimeString(timeStr) {
+    const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (!match) return null;
+
+    let hour = parseInt(match[1], 10);
+    let minute = parseInt(match[2] || "0", 10);
+    const ampm = match[3]?.toLowerCase();
+
+    if (ampm === "pm" && hour < 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
+
+    return { hour, minute };
+  }
+
   const handleAddClick = () => {
     if (!task.trim()) {
       alert("Please enter a task title.");
       return;
     }
 
-    const extractedProjects = extractProjectsFromTask(task);
-    const cleanedTitle = task.replace(/#\w+/g, "").trim();
-    const finalProjects =
-      extractedProjects.length > 0
-        ? extractedProjects
-        : projects.length > 0
-        ? projects.map(normalizeProject)
-        : [normalizeProject(defaultProject)];
+    const words = task.trim().split(/\s+/);
+    let extractedProjects = [];
+    let subcategory = null;
+    let titleWords = [];
+
+    words.forEach((word) => {
+      if (word.startsWith("#")) {
+        extractedProjects.push(normalizeProject(word));
+      } else if (word.startsWith("/")) {
+        subcategory = word;
+      } else {
+        titleWords.push(word);
+      }
+    });
+
+    let tempTitle = titleWords.join(" ").trim();
+
+    // Extract time from "from 3:00pm to 5:30pm"
+    let startTime = null;
+    let endTime = null;
+    let timeRangeLabel = null;
+
+    const timeRangeMatch = tempTitle.match(
+      /from\s+([\d:apm\s]+)\s+to\s+([\d:apm\s]+)/i
+    );
+    if (timeRangeMatch) {
+      startTime = parseTimeString(timeRangeMatch[1].trim());
+      endTime = parseTimeString(timeRangeMatch[2].trim());
+      tempTitle = tempTitle
+        .replace(timeRangeMatch[0], "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    const cleanedTitle = tempTitle;
+
+    let finalProjects = [];
+
+    if (subcategory) {
+      let mainCategory =
+        extractedProjects.length > 0
+          ? extractedProjects[0]
+          : selectedProject !== "#Inbox"
+          ? selectedProject
+          : null;
+
+      if (!mainCategory) {
+        alert("Please specify a main category before using a subcategory.");
+        return;
+      }
+
+      const fullSubcategory = `${mainCategory}/${subcategory.replace(
+        /^\//,
+        ""
+      )}`;
+      finalProjects.push(mainCategory, fullSubcategory);
+    } else {
+      finalProjects =
+        extractedProjects.length > 0
+          ? extractedProjects
+          : projects.length > 0
+          ? projects.map(normalizeProject)
+          : [normalizeProject(defaultProject)];
+    }
+
+    // Set start and end datetime based on dueDate
+    let startDate = dueDate ? new Date(dueDate) : new Date();
+    let endDate = dueDate ? new Date(dueDate) : new Date();
+
+    if (startTime) {
+      startDate.setHours(startTime.hour);
+      startDate.setMinutes(startTime.minute);
+      startDate.setSeconds(0);
+      startDate.setMilliseconds(0);
+    }
+
+    if (endTime) {
+      endDate.setHours(endTime.hour);
+      endDate.setMinutes(endTime.minute);
+      endDate.setSeconds(0);
+      endDate.setMilliseconds(0);
+    }
+
+    // Create time range label for UI display
+    if (startTime && endTime) {
+      timeRangeLabel = `⏰ ${startDate.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })} – ${endDate.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    } else if (startTime) {
+      timeRangeLabel = `⏰ ${startDate.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    }
 
     const newTask = {
       title: cleanedTitle,
       description,
       projects: finalProjects,
-      date: dueDate.toISOString(),
+      date: dueDate?.toISOString(),
+      start: startTime ? startDate.toISOString() : null,
+      end: endTime ? endDate.toISOString() : null,
+      timeRangeLabel,
       inboxOnly: finalProjects.includes("#Inbox"),
       priority,
       reminder:
@@ -152,7 +290,6 @@ export default function AddTask({
       onAddTask(newTask);
     }
 
-    // ✅ Update allProjects with any new tags
     const uniqueProjects = new Set([...allProjects, ...finalProjects]);
     setAllProjects(Array.from(uniqueProjects));
 
@@ -250,6 +387,24 @@ export default function AddTask({
                 }}
               >
                 {t.title}
+
+                {/* Show time range if available */}
+                {t.start && t.end && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    ⏰{" "}
+                    {new Date(t.start).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}{" "}
+                    –{" "}
+                    {new Date(t.end).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                )}
+
+                {/* Existing metadata */}
                 <div className="task-meta">
                   {new Date(t.date).toLocaleDateString()} •{" "}
                   {t.projects?.join(", ")} • {t.priority.label}
@@ -264,6 +419,7 @@ export default function AddTask({
                   )}
                 </div>
               </span>
+
               <div className="hover-actions">
                 <i
                   className="pi pi-pencil"
@@ -495,22 +651,21 @@ export default function AddTask({
                   ))}
                 </div>
               </OverlayPanel>
-            
 
-            <div className="form-buttons">
-              <Button
-                label="Cancel"
-                className="p-button-text"
-                onClick={resetForm}
-              />
-              <Button
-                label={isEditing ? "Update Task" : "Add Task"}
-                className="p-button-danger"
-                onClick={handleAddClick}
-              />
+              <div className="form-buttons">
+                <Button
+                  label="Cancel"
+                  className="p-button-text"
+                  onClick={resetForm}
+                />
+                <Button
+                  label={isEditing ? "Update Task" : "Add Task"}
+                  className="p-button-danger"
+                  onClick={handleAddClick}
+                />
+              </div>
             </div>
           </div>
-        </div>
         </div>
       )}
 

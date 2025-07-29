@@ -238,3 +238,23 @@
   color: red;
   font-weight: bold;
 }
+
+.suggestions-panel {
+  position: absolute;
+  background: white;
+  border: 1px solid #ccc;
+  z-index: 999;
+  max-height: 200px;
+  overflow-y: auto;
+  width: 300px;
+}
+
+.suggestion-item {
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  background-color: #f0f0f0;
+}
+

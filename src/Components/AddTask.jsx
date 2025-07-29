@@ -44,6 +44,13 @@ export default function AddTask({
   const [selectedProject, setSelectedProject] = useState("#Inbox");
   const [filterText, setFilterText] = useState("");
   const op = useRef(null);
+  const [tags, setTags] = useState([]);
+  const [hashSuggestions, setHashSuggestions] = useState([]);
+  const [showHashSuggestions, setShowHashSuggestions] = useState(false);
+  const [cursorPos, setCursorPos] = useState(0);
+  const [slashSuggestions, setSlashSuggestions] = useState([]);
+  const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
+  const [editField, setEditField] = useState({}); // e.g., { taskId: 'priority' }
 
   // Extract unique custom projects from tasks (excluding #Inbox)
   const myProjects = allProjects.filter((p) => p && p !== "#Inbox");
@@ -68,6 +75,67 @@ export default function AddTask({
 
     op.current.hide();
   };
+
+  
+  const containerRef = useRef();
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target)
+      ) {
+        setEditField({}); // Clicked outside, close all edits
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [setEditField]);
+
+  useEffect(() => {
+    if (!task.trim()) return;
+
+    // Priority setting via p1, p2...
+    const priorityMatch = task.match(/\bp([1-4])\b/i);
+    if (priorityMatch) {
+      const level = parseInt(priorityMatch[1]);
+      setPriority({
+        level,
+        label:
+          level === 1
+            ? "🔴 Priority 1"
+            : level === 2
+            ? "🟠 Priority 2"
+            : level === 3
+            ? "🟡 Priority 3"
+            : "⚪ Priority 4",
+      });
+    }
+
+    // Time match like "4:30pm" or "11am"
+    const timeOnlyMatch = task.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+    if (timeOnlyMatch) {
+      const hour = parseInt(timeOnlyMatch[1]);
+      const minute = parseInt(timeOnlyMatch[2] || "0");
+      const ampm = timeOnlyMatch[3].toLowerCase();
+      let h = hour;
+      if (ampm === "pm" && h < 12) h += 12;
+      if (ampm === "am" && h === 12) h = 0;
+
+      const newDate = new Date(dueDate);
+      newDate.setHours(h);
+      newDate.setMinutes(minute);
+      newDate.setSeconds(0);
+      setDueDate(newDate);
+    }
+
+    // Tags via @something
+    const tagMatches = task.match(/@\w+/g);
+    if (tagMatches) {
+      setTags(tagMatches.map((tag) => tag.replace("@", "")));
+    }
+  }, [task]);
 
   useEffect(() => {
     if (!isEditing && projects.length === 0) {
@@ -158,115 +226,109 @@ export default function AddTask({
       return;
     }
 
-    const words = task.trim().split(/\s+/);
+    let title = task.trim();
     let extractedProjects = [];
     let subcategory = null;
-    let titleWords = [];
-
-    words.forEach((word) => {
-      if (word.startsWith("#")) {
-        extractedProjects.push(normalizeProject(word));
-      } else if (word.startsWith("/")) {
-        subcategory = word;
-      } else {
-        titleWords.push(word);
-      }
-    });
-
-    let tempTitle = titleWords.join(" ").trim();
-
-    // Extract time from "from 3:00pm to 5:30pm"
+    let tags = [];
     let startTime = null;
     let endTime = null;
     let timeRangeLabel = null;
 
-    const timeRangeMatch = tempTitle.match(
-      /from\s+([\d:apm\s]+)\s+to\s+([\d:apm\s]+)/i
-    );
-    if (timeRangeMatch) {
-      startTime = parseTimeString(timeRangeMatch[1].trim());
-      endTime = parseTimeString(timeRangeMatch[2].trim());
-      tempTitle = tempTitle
-        .replace(timeRangeMatch[0], "")
-        .replace(/\s+/g, " ")
-        .trim();
+    // Extract #project
+    const categoryMatch = title.match(/#\w+/);
+    if (categoryMatch) {
+      extractedProjects.push(normalizeProject(categoryMatch[0]));
     }
 
-    const cleanedTitle = tempTitle;
-
-    let finalProjects = [];
-
-    if (subcategory) {
-      let mainCategory =
-        extractedProjects.length > 0
-          ? extractedProjects[0]
-          : selectedProject !== "#Inbox"
-          ? selectedProject
-          : null;
-
-      if (!mainCategory) {
-        alert("Please specify a main category before using a subcategory.");
-        return;
-      }
-
-      const fullSubcategory = `${mainCategory}/${subcategory.replace(
-        /^\//,
-        ""
-      )}`;
-      finalProjects.push(mainCategory, fullSubcategory);
-    } else {
-      finalProjects =
-        extractedProjects.length > 0
-          ? extractedProjects
-          : projects.length > 0
-          ? projects.map(normalizeProject)
-          : [normalizeProject(defaultProject)];
+    // Extract /subcategory
+    const subcatMatch = title.match(/\/(\w+)/);
+    if (subcatMatch && extractedProjects.length > 0) {
+      subcategory = `${extractedProjects[0]}/${subcatMatch[1]}`;
+      extractedProjects.push(subcategory);
     }
 
-    // Set start and end datetime based on dueDate
-    let startDate = dueDate ? new Date(dueDate) : new Date();
-    let endDate = dueDate ? new Date(dueDate) : new Date();
-
-    if (startTime) {
-      startDate.setHours(startTime.hour);
-      startDate.setMinutes(startTime.minute);
-      startDate.setSeconds(0);
-      startDate.setMilliseconds(0);
+    // Extract @tags
+    const tagMatches = title.match(/@\w+/g);
+    if (tagMatches) {
+      tags = tagMatches.map((t) => t.replace("@", ""));
     }
 
-    if (endTime) {
-      endDate.setHours(endTime.hour);
-      endDate.setMinutes(endTime.minute);
-      endDate.setSeconds(0);
-      endDate.setMilliseconds(0);
+    // Extract time like 5:00pm
+    const timeOnlyMatch = title.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+    if (timeOnlyMatch) {
+      let hour = parseInt(timeOnlyMatch[1]);
+      let minute = parseInt(timeOnlyMatch[2] || "0");
+      let ampm = timeOnlyMatch[3]?.toLowerCase();
+      if (ampm === "pm" && hour < 12) hour += 12;
+      if (ampm === "am" && hour === 12) hour = 0;
+
+      startTime = new Date(dueDate);
+      startTime.setHours(hour);
+      startTime.setMinutes(minute);
+      startTime.setSeconds(0);
+      startTime.setMilliseconds(0);
     }
 
-    // Create time range label for UI display
-    if (startTime && endTime) {
-      timeRangeLabel = `⏰ ${startDate.toLocaleTimeString([], {
+    // Extract duration like 10 min
+    const durationMatch = title.match(/(\d{1,3})\s*(min|minutes)/i);
+    if (durationMatch && startTime) {
+      const minutes = parseInt(durationMatch[1]);
+      endTime = new Date(startTime);
+      endTime.setMinutes(startTime.getMinutes() + minutes);
+      timeRangeLabel = `⏰ ${startTime.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
-      })} – ${endDate.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`;
-    } else if (startTime) {
-      timeRangeLabel = `⏰ ${startDate.toLocaleTimeString([], {
+      })} – ${endTime.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       })}`;
     }
+
+    // Extract p1/p2/p3/p4
+    const priorityMatch = title.match(/\bp([1-4])\b/i);
+    let level = 4;
+    if (priorityMatch) {
+      level = parseInt(priorityMatch[1]);
+    }
+    const finalPriority = {
+      level,
+      label:
+        level === 1
+          ? "🔴 Priority 1"
+          : level === 2
+          ? "🟠 Priority 2"
+          : level === 3
+          ? "🟡 Priority 3"
+          : "⚪ Priority 4",
+    };
+
+    // Clean the title text
+    let cleanedTitle = title
+      .replace(/#\w+/g, "")
+      .replace(/\/\w+/g, "")
+      .replace(/@\w+/g, "")
+      .replace(/\bp[1-4]\b/i, "")
+      .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, "")
+      .replace(/\d{1,3}\s*(min|minutes)/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
     const newTask = {
       title: cleanedTitle,
       description,
-      projects: finalProjects,
+      projects:
+        extractedProjects.length > 0
+          ? extractedProjects
+          : projects.length > 0
+          ? projects.map(normalizeProject)
+          : [normalizeProject(defaultProject)],
       date: dueDate?.toISOString(),
-      start: startTime ? startDate.toISOString() : null,
-      end: endTime ? endDate.toISOString() : null,
+      start: startTime ? startTime.toISOString() : null,
+      end: endTime ? endTime.toISOString() : null,
       timeRangeLabel,
-      inboxOnly: finalProjects.includes("#Inbox"),
-      priority,
+      inboxOnly: extractedProjects.includes("#Inbox"),
+      priority: finalPriority,
+      tags,
       reminder:
         reminder === "datetime"
           ? reminderTime instanceof Date
@@ -289,9 +351,6 @@ export default function AddTask({
     } else {
       onAddTask(newTask);
     }
-
-    const uniqueProjects = new Set([...allProjects, ...finalProjects]);
-    setAllProjects(Array.from(uniqueProjects));
 
     resetForm();
   };
@@ -405,19 +464,80 @@ export default function AddTask({
                 )}
 
                 {/* Existing metadata */}
-                <div className="task-meta">
-                  {new Date(t.date).toLocaleDateString()} •{" "}
-                  {t.projects?.join(", ")} • {t.priority.label}
-                  {t.reminder && (
-                    <>
-                      {" "}
-                      • ⏰{" "}
-                      {t.reminder === "10 minutes before"
-                        ? t.reminder
-                        : new Date(t.reminder).toLocaleString()}
-                    </>
-                  )}
-                </div>
+                <div
+      ref={containerRef}
+      className="task-meta"
+      style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+    >
+      {/* 📅 Click-to-edit Date */}
+      <div onClick={() => setEditField({ [t.id]: "date" })}>
+        {editField[t.id] === "date" ? (
+          <Calendar
+            value={new Date(t.date)}
+            onChange={(e) => {
+              onEditTask(t.id, { date: e.value.toISOString() });
+              setEditField({});
+            }}
+            showTime
+            hourFormat="12"
+          />
+        ) : (
+          <span title="Click to edit date">
+            {new Date(t.date).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      {/* 📁 Click-to-edit Project */}
+      <div onClick={() => setEditField({ [t.id]: "project" })}>
+        {editField[t.id] === "project" ? (
+          <select
+            value={t.projects?.[0] || ""}
+            onChange={(e) => {
+              onEditTask(t.id, { projects: [e.target.value] });
+              setEditField({});
+            }}
+          >
+            {allProjects.map((proj, i) => (
+              <option key={i} value={proj}>
+                {proj}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span title="Click to edit project">{t.projects?.join(", ")}</span>
+        )}
+      </div>
+
+      {/* ⚠️ Click-to-edit Priority */}
+      <div onClick={() => setEditField({ [t.id]: "priority" })}>
+        {editField[t.id] === "priority" ? (
+          <select
+            value={t.priority.level}
+            onChange={(e) => {
+              const level = parseInt(e.target.value);
+              const label =
+                level === 1
+                  ? "🔴 Priority 1"
+                  : level === 2
+                  ? "🟠 Priority 2"
+                  : level === 3
+                  ? "🟡 Priority 3"
+                  : "⚪ Priority 4";
+              onEditTask(t.id, { priority: { level, label } });
+              setEditField({});
+            }}
+          >
+            <option value={1}>🔴 Priority 1</option>
+            <option value={2}>🟠 Priority 2</option>
+            <option value={3}>🟡 Priority 3</option>
+            <option value={4}>⚪ Priority 4</option>
+          </select>
+        ) : (
+          <span title="Click to edit priority">{t.priority.label}</span>
+        )}
+      </div>
+    </div>
               </span>
 
               <div className="hover-actions">
@@ -521,10 +641,83 @@ export default function AddTask({
         <div className="task-form">
           <InputText
             value={task}
-            onChange={(e) => setTask(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setTask(value);
+              setCursorPos(e.target.selectionStart);
+
+              const match = value
+                .slice(0, e.target.selectionStart)
+                .match(/#(\w*)$/);
+              if (match) {
+                const query = match[1].toLowerCase();
+                const suggestions = allProjects.filter((p) =>
+                  p.toLowerCase().startsWith(`#${query}`)
+                );
+                setHashSuggestions(suggestions);
+                setShowHashSuggestions(true);
+              } else {
+                setShowHashSuggestions(false);
+              }
+              // inside onChange
+              const slashMatch = value
+                .slice(0, e.target.selectionStart)
+                .match(/\/(\w*)$/);
+              if (slashMatch) {
+                const query = slashMatch[1].toLowerCase();
+                const suggestions = allProjects.filter(
+                  (p) =>
+                    p.includes("/") && p.toLowerCase().startsWith(`/${query}`)
+                );
+                setSlashSuggestions(suggestions);
+                setShowSlashSuggestions(true);
+              } else {
+                setShowSlashSuggestions(false);
+              }
+            }}
             placeholder="e.g. Plan meeting #Work"
             className="task-input"
           />
+          {showHashSuggestions && hashSuggestions.length > 0 && (
+            <div className="suggestions-panel">
+              {hashSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="suggestion-item"
+                  onClick={() => {
+                    // Replace current #word with selected suggestion
+                    const before = task.slice(0, cursorPos).replace(/#\w*$/, s);
+                    const after = task.slice(cursorPos);
+                    setTask(before + after);
+                    setShowHashSuggestions(false);
+                  }}
+                >
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
+          {showSlashSuggestions && slashSuggestions.length > 0 && (
+            <div className="suggestions-panel">
+              {slashSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="suggestion-item"
+                  onClick={() => {
+                    const before = task
+                      .slice(0, cursorPos)
+                      .replace(/\/\w*$/, s);
+                    const after = task.slice(cursorPos);
+                    setTask(before + after);
+                    setShowSlashSuggestions(false);
+                  }}
+                >
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
+
           <InputTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -677,3 +870,4 @@ export default function AddTask({
     </div>
   );
 }
+

@@ -1,5 +1,4 @@
-export const normalizeProject = (project) => {
-  if (!project) return "#Inbox";                          // fallback
-  const cleaned = project.trim().replace(/^#+/, "");      // remove leading #
-  return `#${cleaned}`;                                   // add exactly one #
+export const normalizeProject = (base) => {
+  if (typeof base !== "string") return "#Inbox"; // or fallback value
+  return base.replace(/[^#\w/-]/g, "").trim();
 };

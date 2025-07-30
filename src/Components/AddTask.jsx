@@ -34,7 +34,6 @@ export default function AddTask({
   const [showForm, setShowForm] = useState(true);
   const [editingProject, setEditingProject] = useState(false);
   const [projects, setProjects] = useState([]);
-
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
   const [descOverlayVisible, setDescOverlayVisible] = useState(false);
@@ -76,15 +75,11 @@ export default function AddTask({
     op.current.hide();
   };
 
-  
   const containerRef = useRef();
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
         setEditField({}); // Clicked outside, close all edits
       }
     };
@@ -445,7 +440,13 @@ export default function AddTask({
                   }
                 }}
               >
-                {t.title}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: t.title.replace(/(#\w+|@\w+|\/\w+)/g, (match) => {
+                      return `<span style="background: #eee; padding: 2px 4px; border-radius: 4px">${match}</span>`;
+                    }),
+                  }}
+                />
 
                 {/* Show time range if available */}
                 {t.start && t.end && (
@@ -465,79 +466,86 @@ export default function AddTask({
 
                 {/* Existing metadata */}
                 <div
-      ref={containerRef}
-      className="task-meta"
-      style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
-    >
-      {/* 📅 Click-to-edit Date */}
-      <div onClick={() => setEditField({ [t.id]: "date" })}>
-        {editField[t.id] === "date" ? (
-          <Calendar
-            value={new Date(t.date)}
-            onChange={(e) => {
-              onEditTask(t.id, { date: e.value.toISOString() });
-              setEditField({});
-            }}
-            showTime
-            hourFormat="12"
-          />
-        ) : (
-          <span title="Click to edit date">
-            {new Date(t.date).toLocaleDateString()}
-          </span>
-        )}
-      </div>
+                  ref={containerRef}
+                  className="task-meta"
+                  style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                >
+                  {/* 📅 Click-to-edit Date */}
+                  <div onClick={() => setEditField({ [t.id]: "date" })}>
+                    {editField[t.id] === "date" ? (
+                      <Calendar
+                        value={new Date(t.date)}
+                        onChange={(e) => {
+                          onEdit(t.id, "date", e.value);
+                          setEditField({});
+                        }}
+                        showTime // ✅ shows time picker
+                        hourFormat="24" // or "24" based on your preference
+                      />
+                    ) : (
+                      new Date(t.date).toLocaleString("en-US", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })
+                    )}
+                  </div>
 
-      {/* 📁 Click-to-edit Project */}
-      <div onClick={() => setEditField({ [t.id]: "project" })}>
-        {editField[t.id] === "project" ? (
-          <select
-            value={t.projects?.[0] || ""}
-            onChange={(e) => {
-              onEditTask(t.id, { projects: [e.target.value] });
-              setEditField({});
-            }}
-          >
-            {allProjects.map((proj, i) => (
-              <option key={i} value={proj}>
-                {proj}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span title="Click to edit project">{t.projects?.join(", ")}</span>
-        )}
-      </div>
+                  {/* 📁 Click-to-edit Project */}
+                  <div onClick={() => setEditField({ [t.id]: "project" })}>
+                    {editField[t.id] === "project" ? (
+                      <input
+                        type="text"
+                        value={t.projects?.[0] || ""}
+                        onChange={(e) => {
+                          const value = normalizeProject(e.target.value);
+                          onEditTask(t.id, { projects: [value] });
+                        }}
+                        onBlur={() => setEditField({})}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            setEditField({});
+                          }
+                        }}
+                        placeholder="#category or #category/sub"
+                      />
+                    ) : (
+                      <span title="Click to edit project">
+                        {t.projects?.join(", ")}
+                      </span>
+                    )}
+                  </div>
 
-      {/* ⚠️ Click-to-edit Priority */}
-      <div onClick={() => setEditField({ [t.id]: "priority" })}>
-        {editField[t.id] === "priority" ? (
-          <select
-            value={t.priority.level}
-            onChange={(e) => {
-              const level = parseInt(e.target.value);
-              const label =
-                level === 1
-                  ? "🔴 Priority 1"
-                  : level === 2
-                  ? "🟠 Priority 2"
-                  : level === 3
-                  ? "🟡 Priority 3"
-                  : "⚪ Priority 4";
-              onEditTask(t.id, { priority: { level, label } });
-              setEditField({});
-            }}
-          >
-            <option value={1}>🔴 Priority 1</option>
-            <option value={2}>🟠 Priority 2</option>
-            <option value={3}>🟡 Priority 3</option>
-            <option value={4}>⚪ Priority 4</option>
-          </select>
-        ) : (
-          <span title="Click to edit priority">{t.priority.label}</span>
-        )}
-      </div>
-    </div>
+                  {/* ⚠️ Click-to-edit Priority */}
+                  <div onClick={() => setEditField({ [t.id]: "priority" })}>
+                    {editField[t.id] === "priority" ? (
+                      <select
+                        value={t.priority.level}
+                        onChange={(e) => {
+                          const level = parseInt(e.target.value);
+                          const label =
+                            level === 1
+                              ? "🔴 Priority 1"
+                              : level === 2
+                              ? "🟠 Priority 2"
+                              : level === 3
+                              ? "🟡 Priority 3"
+                              : "⚪ Priority 4";
+                          onEditTask(t.id, { priority: { level, label } });
+                          setEditField({});
+                        }}
+                      >
+                        <option value={1}>🔴 Priority 1</option>
+                        <option value={2}>🟠 Priority 2</option>
+                        <option value={3}>🟡 Priority 3</option>
+                        <option value={4}>⚪ Priority 4</option>
+                      </select>
+                    ) : (
+                      <span title="Click to edit priority">
+                        {t.priority.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </span>
 
               <div className="hover-actions">
@@ -870,4 +878,3 @@ export default function AddTask({
     </div>
   );
 }
-

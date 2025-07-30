@@ -37,6 +37,15 @@ const CategoryPage = ({
   const [projects, setProjects] = useState([normalizeProject(categoryName)]);
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
+  const [tags, setTags] = useState([]);
+  const [cursorPos, setCursorPos] = useState(0);
+  const [slashSuggestions, setSlashSuggestions] = useState([]);
+  const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
+  const [editField, setEditField] = useState({});
+  const containerRef = useRef(null);
+  const allProjects = [...new Set(tasks.flatMap((t) => t.projects || []))];
+  const inputRef = useRef(null);
+  const descriptionRef = useRef(null);
 
   const menu = useRef(null);
   const reminderMenu = useRef(null);
@@ -63,7 +72,13 @@ const CategoryPage = ({
   };
 
   const cleanTaskTitle = (text) => {
-    return text.replace(/[#/]\w+/g, "").trim();
+    return text
+      .replace(/[#/]\w+/g, "") // Remove #project and /subcat
+      .replace(/@\w+/g, "") // Remove @tags
+      .replace(/\b(?:at\s*)?\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, "") // Remove time
+      .replace(/\bp[1-4]\b/gi, "") // Remove priority
+      .replace(/\s+/g, " ") // Clean up extra spaces
+      .trim();
   };
 
   const parseTimeString = (str) => {
@@ -80,88 +95,126 @@ const CategoryPage = ({
     return { hour, minute };
   };
 
-  const handleAddClick = async () => {
-    const extractedProjects = extractProjectsFromTask(task);
-    let cleanedTitle = cleanTaskTitle(task);
-    let taskProjects = [...projects];
+  const extractTagsFromTask = (text) => {
+    const matches = text.match(/@\w+/g) || [];
+    return matches.map((t) => t.slice(1));
+  };
 
-    const subcatMatch = task.match(/\/(\w+)/);
-    if (subcatMatch) {
-      const subcategory = subcatMatch[1];
-      const baseCategory = normalizeProject(categoryName);
-      const fullProject = `${baseCategory}/${subcategory}`;
-      taskProjects = [fullProject];
-    }
+  const handleAddClick = () => {
+    const taskTitle = task.trim();
+    const taskDescription = description.trim();
+    if (!taskTitle) return;
 
-    // ⏰ Extract time from "from 3:00pm to 5:30pm"
-    let startTime = null;
-    let endTime = null;
-    const timeMatch = cleanedTitle.match(
-      /from\s+([\d:apm\s]+)\s+to\s+([\d:apm\s]+)/i
+    // Priority parsing (e.g. p2 = Priority 2)
+    const priorityMatch = taskTitle.match(/p([1-4])/i);
+    const level = priorityMatch ? parseInt(priorityMatch[1]) : 4;
+    const labels = {
+      1: "🔴 Priority 1",
+      2: "🟠 Priority 2",
+      3: "🟡 Priority 3",
+      4: "⚪ Priority 4",
+    };
+    const selectedPriority = { level, label: labels[level] };
+    setPriority(selectedPriority); // Update UI state
+
+    // Time parsing (e.g. "at 5pm", "5:30 AM")
+    let startDate = new Date(dueDate);
+    const timeMatch = taskTitle.match(
+      /(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
     );
     if (timeMatch) {
-      startTime = parseTimeString(timeMatch[1].trim());
-      endTime = parseTimeString(timeMatch[2].trim());
-      cleanedTitle = cleanedTitle
-        .replace(timeMatch[0], "")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
+      const [, hourStr, minuteStr, period] = timeMatch;
+      let hour = parseInt(hourStr, 10);
+      const minutes = minuteStr ? parseInt(minuteStr, 10) : 0;
 
-    let startDate = new Date(dueDate);
-    let endDate = new Date(dueDate);
+      if (period?.toLowerCase() === "pm" && hour < 12) hour += 12;
+      else if (period?.toLowerCase() === "am" && hour === 12) hour = 0;
 
-    if (startTime) {
-      startDate.setHours(startTime.hour);
-      startDate.setMinutes(startTime.minute);
+      startDate.setHours(hour);
+      startDate.setMinutes(minutes);
       startDate.setSeconds(0);
       startDate.setMilliseconds(0);
+      setDueDate(startDate); // Update UI state
     }
 
-    if (endTime) {
-      endDate.setHours(endTime.hour);
-      endDate.setMinutes(endTime.minute);
-      endDate.setSeconds(0);
-      endDate.setMilliseconds(0);
-    }
+    // Project parsing via #tags
+    const projectMatches = taskTitle.match(/#\w+/g);
+    const normalizedProjects = projectMatches
+      ? projectMatches.map((tag) => normalizeProject(tag))
+      : [categoryName || "Inbox"];
+    setProjects(normalizedProjects); // Update UI state
 
-    const updatedTask = {
-      title: cleanedTitle,
-      description,
-      date: dueDate.toISOString(),
-      start: startTime ? startDate.toISOString() : null,
-      end: endTime ? endDate.toISOString() : null,
-      priority,
-      reminder:
-        reminder === "before"
-          ? "10 minutes before"
-          : reminder === "datetime" && reminderTime
-          ? reminderTime.toISOString()
-          : null,
-      projects: taskProjects,
+    // Final Task object
+    const newTask = {
+      id: Date.now(),
+      title: cleanTaskTitle(taskTitle),
+      description: taskDescription,
+      date: startDate.toISOString(),
+      priority: selectedPriority,
+      projects: normalizedProjects,
+      completed: false,
     };
 
-    const taskId = tasks[editTaskIndex]?.id;
-    if (taskId) {
-      await handleEditTask(taskId, updatedTask);
-    } else {
-      await onAddTask(updatedTask);
-    }
-
+    // Add and reset
+    setTasks([...tasks, newTask]);
     resetForm();
   };
 
   const resetForm = () => {
+    if (inputRef.current) inputRef.current.value = "";
+    if (descriptionRef.current) descriptionRef.current.value = "";
     setTask("");
     setDescription("");
     setDueDate(new Date());
     setPriority({ level: 4, label: "⚪ Priority 4" });
     setReminder(null);
     setReminderTime(null);
-    setProjects([normalizeProject(categoryName)]);
-    setShowForm(false);
     setIsEditing(false);
     setEditTaskIndex(null);
+    setProjects(["Inbox"]);
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setTask(value); // update live title
+
+    // ✅ Priority parsing
+    const priorityMatch = value.match(/p([1-4])/i);
+    const level = priorityMatch ? parseInt(priorityMatch[1]) : 4;
+    const labels = {
+      1: "🔴 Priority 1",
+      2: "🟠 Priority 2",
+      3: "🟡 Priority 3",
+      4: "⚪ Priority 4",
+    };
+    setPriority({ level, label: labels[level] });
+
+    // ✅ Time parsing
+    const timeMatch = value.match(
+      /(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
+    );
+    if (timeMatch) {
+      const [, hourStr, minuteStr, period] = timeMatch;
+      let hour = parseInt(hourStr, 10);
+      const minutes = minuteStr ? parseInt(minuteStr, 10) : 0;
+
+      if (period?.toLowerCase() === "pm" && hour < 12) hour += 12;
+      if (period?.toLowerCase() === "am" && hour === 12) hour = 0;
+
+      const newDate = new Date(dueDate);
+      newDate.setHours(hour);
+      newDate.setMinutes(minutes);
+      newDate.setSeconds(0);
+      newDate.setMilliseconds(0);
+      setDueDate(newDate); // ✅ update calendar
+    }
+
+    // ✅ Project parsing
+    const projectMatches = value.match(/#\w+/g);
+    const normalized = projectMatches?.map((tag) => normalizeProject(tag)) || [
+      "Inbox",
+    ];
+    setProjects(normalized);
   };
 
   const handleAddComment = async (idx) => {
@@ -188,14 +241,17 @@ const CategoryPage = ({
     }
   };
 
-  const filteredTasks = tasks.filter(
-    (t) =>
-      t.projects
-        ?.map(normalizeProject)
-        .includes(normalizeProject(categoryName)) &&
+  const filteredTasks = tasks.filter((t) => {
+    const normCategory = normalizeProject(categoryName);
+    const normalizedProjects = t.projects?.map(normalizeProject) || [];
+    return (
+      normalizedProjects.some(
+        (p) => p === normCategory || p.startsWith(normCategory + "/")
+      ) &&
       !t.completed &&
       !t.inboxOnly
-  );
+    );
+  });
 
   const priorityOptions = [
     {
@@ -276,18 +332,86 @@ const CategoryPage = ({
                   )}
 
                   {/* Existing metadata */}
-                  <div className="task-meta">
-                    {new Date(t.date).toLocaleDateString()} •{" "}
-                    {t.projects?.join(", ")} • {t.priority.label}
-                    {t.reminder && (
-                      <>
-                        {" "}
-                        • ⏰{" "}
-                        {t.reminder === "10 minutes before"
-                          ? t.reminder
-                          : new Date(t.reminder).toLocaleString()}
-                      </>
-                    )}
+                  <div
+                    ref={containerRef}
+                    className="task-meta"
+                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                  >
+                    {/* 📅 Click-to-edit Date */}
+                    <div onClick={() => setEditField({ [t.id]: "date" })}>
+                      {editField[t.id] === "date" ? (
+                        <Calendar
+                          value={new Date(t.date)}
+                          onChange={(e) => {
+                            onEdit(t.id, "date", e.value);
+                            setEditField({});
+                          }}
+                          showTime // ✅ shows time picker
+                          hourFormat="24" // or "24" based on your preference
+                        />
+                      ) : (
+                        new Date(t.date).toLocaleString("en-US", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })
+                      )}
+                    </div>
+
+                    {/* 📁 Click-to-edit Project */}
+                    <div onClick={() => setEditField({ [t.id]: "project" })}>
+                      {editField[t.id] === "project" ? (
+                        <input
+                          type="text"
+                          value={t.projects?.[0] || ""}
+                          onChange={(e) => {
+                            const value = normalizeProject(e.target.value);
+                            onEditTask(t.id, { projects: [value] });
+                          }}
+                          onBlur={() => setEditField({})}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              setEditField({});
+                            }
+                          }}
+                          placeholder="#category or #category/sub"
+                        />
+                      ) : (
+                        <span title="Click to edit project">
+                          {t.projects?.join(", ")}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* ⚠️ Click-to-edit Priority */}
+                    <div onClick={() => setEditField({ [t.id]: "priority" })}>
+                      {editField[t.id] === "priority" ? (
+                        <select
+                          value={t.priority.level}
+                          onChange={(e) => {
+                            const level = parseInt(e.target.value);
+                            const label =
+                              level === 1
+                                ? "🔴 Priority 1"
+                                : level === 2
+                                ? "🟠 Priority 2"
+                                : level === 3
+                                ? "🟡 Priority 3"
+                                : "⚪ Priority 4";
+                            onEditTask(t.id, { priority: { level, label } });
+                            setEditField({});
+                          }}
+                        >
+                          <option value={1}>🔴 Priority 1</option>
+                          <option value={2}>🟠 Priority 2</option>
+                          <option value={3}>🟡 Priority 3</option>
+                          <option value={4}>⚪ Priority 4</option>
+                        </select>
+                      ) : (
+                        <span title="Click to edit priority">
+                          {t.priority.label}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </span>
 
@@ -405,10 +529,49 @@ const CategoryPage = ({
         <div className="task-form">
           <InputText
             value={task}
-            onChange={(e) => setTask(e.target.value)}
+            onChange={(e) => {
+              handleInputChange(e); // 👈 your parsing logic
+              const value = e.target.value;
+              const pos = e.target.selectionStart;
+              setCursorPos(pos);
+
+              const slashMatch = value.slice(0, pos).match(/\/(\w*)$/);
+              if (slashMatch) {
+                const query = slashMatch[1].toLowerCase();
+                const suggestions = allProjects.filter(
+                  (p) =>
+                    p.includes("/") && p.toLowerCase().includes(`/${query}`)
+                );
+                setSlashSuggestions(suggestions);
+                setShowSlashSuggestions(true);
+              } else {
+                setShowSlashSuggestions(false);
+              }
+            }}
             placeholder="e.g. Plan meeting #Work"
             className="task-input"
           />
+
+          {showSlashSuggestions && slashSuggestions.length > 0 && (
+            <div className="suggestions-panel">
+              {slashSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="suggestion-item"
+                  onClick={() => {
+                    const before = task
+                      .slice(0, cursorPos)
+                      .replace(/\/\w*$/, s);
+                    const after = task.slice(cursorPos);
+                    setTask(before + after);
+                    setShowSlashSuggestions(false);
+                  }}
+                >
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
           <InputTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -421,8 +584,10 @@ const CategoryPage = ({
             <Calendar
               value={dueDate}
               onChange={(e) => setDueDate(e.value)}
-              placeholder="Select due date"
+              placeholder="Select date & time"
               showIcon
+              showTime
+              hourFormat="24" // or "24" based on your preference
               dateFormat="dd/mm/yy"
             />
 
@@ -459,7 +624,16 @@ const CategoryPage = ({
             )}
           </div>
           <div className="task-footer">
-            <Chip label={`#${categoryName}`} icon="pi pi-folder" />
+            {projects.map((p, i) => (
+              <Chip
+                key={i}
+                label={p}
+                icon="pi pi-folder"
+                className="project-chip"
+                style={{ marginRight: "0.25rem" }}
+              />
+            ))}
+
             <div className="form-buttons">
               <Button
                 label="Cancel"

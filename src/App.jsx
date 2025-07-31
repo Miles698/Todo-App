@@ -31,23 +31,18 @@ export default function App() {
   const [showUndo, setShowUndo] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingText, setEditingText] = useState("");
-  
 
   const today = new Date();
-const isToday = (someDate) =>
-  someDate.getDate() === today.getDate() &&
-  someDate.getMonth() === today.getMonth() &&
-  someDate.getFullYear() === today.getFullYear();
+  const isToday = (someDate) =>
+    someDate.getDate() === today.getDate() &&
+    someDate.getMonth() === today.getMonth() &&
+    someDate.getFullYear() === today.getFullYear();
 
-const todayTasks = tasks.filter((t) => {
-  return (
-    !t.completed &&
-    !t.inboxOnly &&
-    t.date &&
-    isToday(new Date(t.date)) // ✅ include tasks even with subcategories
-  );
-});
-
+  const todayTasks = tasks.filter((t) => {
+    return (
+      !t.completed && !t.inboxOnly && t.date && isToday(new Date(t.date)) // ✅ include tasks even with subcategories
+    );
+  });
 
   const isFutureDate = (isoDateStr) => {
     const taskDate = new Date(isoDateStr);
@@ -56,8 +51,6 @@ const todayTasks = tasks.filter((t) => {
     today.setHours(0, 0, 0, 0);
     return taskDate > today;
   };
-
-  
 
   const upcomingTasks = tasks.filter(
     (task) =>
@@ -114,16 +107,19 @@ const todayTasks = tasks.filter((t) => {
     }
   };
 
-  const handleEditTask = async (id, updates) => {
-    try {
-      const taskRef = doc(db, "tasks", id);
-      await updateDoc(taskRef, updates);
-      setTasks((prevTasks) =>
-        prevTasks.map((t) => (t.id === id ? { ...t, ...updates } : t))
-      );
-    } catch (err) {
-      console.error("Error editing task:", err);
-    }
+  // In your parent component (e.g., App.js or Home.jsx)
+
+  const handleEditTask = async (id, updatedFields) => {
+    // Update Firestore
+    const taskRef = doc(db, "tasks", id);
+    await updateDoc(taskRef, updatedFields);
+
+    // Update UI (optimistically)
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === id ? { ...task, ...updatedFields } : task
+      )
+    );
   };
 
   const handleEdit = (taskId) => {
@@ -138,27 +134,34 @@ const todayTasks = tasks.filter((t) => {
   };
 
   const handleCompleteTask = async (id) => {
-  const taskRef = doc(db, "tasks", id); // ✅ Fix: define the document reference properly
+    // Get current task
+    const currentTask = tasks.find((task) => task.id === id);
+    if (!currentTask) return;
 
-  await updateDoc(taskRef, { completed: true });
+    const newCompleted = !currentTask.completed; // Toggle value
+    const taskRef = doc(db, "tasks", id);
 
-  // ✅ Optimistically update UI
-  setTasks((prev) =>
-    prev.map((task) => (task.id === id ? { ...task, completed: true } : task))
-  );
+    // Update Firestore
+    await updateDoc(taskRef, { completed: newCompleted });
 
-  const justCompleted = tasks.find((task) => task.id === id);
-  if (justCompleted && !justCompleted.completed) {
-    setRecentlyCompleted(justCompleted);
-    setShowUndo(true);
+    // Update UI optimistically
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === id ? { ...task, completed: newCompleted } : task
+      )
+    );
 
-    // Hide Undo after 5 seconds
-    setTimeout(() => {
-      setShowUndo(false);
-      setRecentlyCompleted(null);
-    }, 5000);
-  }
-};
+    // Handle Undo only when marking completed (not uncompleted)
+    if (newCompleted) {
+      setRecentlyCompleted(currentTask);
+      setShowUndo(true);
+
+      setTimeout(() => {
+        setShowUndo(false);
+        setRecentlyCompleted(null);
+      }, 5000);
+    }
+  };
 
   const handleUndo = async () => {
     if (recentlyCompleted) {
@@ -204,8 +207,8 @@ const todayTasks = tasks.filter((t) => {
   };
 
   const allProjects = Array.from(
-  new Set(tasks.flatMap((t) => t.projects || []))
-);
+    new Set(tasks.flatMap((t) => t.projects || []))
+  );
 
   const handleCommentEnter = (e, index) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -215,29 +218,28 @@ const todayTasks = tasks.filter((t) => {
   };
   const categorizedProjects = {};
 
-tasks.forEach((task) => {
-  (task.projects || []).forEach((p) => {
-    const normalized = p.trim().replace(/^#+/, ""); // remove extra #
-    const [main, sub] = normalized.split("/");
+  tasks.forEach((task) => {
+    (task.projects || []).forEach((p) => {
+      const normalized = p.trim().replace(/^#+/, ""); // remove extra #
+      const [main, sub] = normalized.split("/");
 
-    const mainCategory = `#${main}`;
-    const subCategory = sub?.trim() || null;
+      const mainCategory = `#${main}`;
+      const subCategory = sub?.trim() || null;
 
-    if (!categorizedProjects[mainCategory]) {
-      categorizedProjects[mainCategory] = new Set();
-    }
+      if (!categorizedProjects[mainCategory]) {
+        categorizedProjects[mainCategory] = new Set();
+      }
 
-    if (subCategory) {
-      categorizedProjects[mainCategory].add(subCategory);
-    }
+      if (subCategory) {
+        categorizedProjects[mainCategory].add(subCategory);
+      }
+    });
   });
-});
 
-// Convert Sets to Array
-const finalCategories = Object.fromEntries(
-  Object.entries(categorizedProjects).map(([k, v]) => [k, Array.from(v)])
-);
-
+  // Convert Sets to Array
+  const finalCategories = Object.fromEntries(
+    Object.entries(categorizedProjects).map(([k, v]) => [k, Array.from(v)])
+  );
 
   const handleDateChange = async (taskId, newDate) => {
     const isoDate = newDate.toISOString().split("T")[0]; // convert to YYYY-MM-DD
@@ -316,7 +318,6 @@ const finalCategories = Object.fromEntries(
           marginRight: notificationsOpen ? "300px" : 0,
         }}
       >
-        
         {activeTab === "Add Task" && (
           <AddTask
             tasks={tasks.filter(
@@ -330,9 +331,8 @@ const finalCategories = Object.fromEntries(
             onAddTask={handleAddTask}
             onEditTask={handleEditTask}
             allProjects={Array.from(
-    new Set(tasks.flatMap((task) => task.projects || []))
-  )}
-            
+              new Set(tasks.flatMap((task) => task.projects || []))
+            )}
           />
         )}
 
@@ -353,7 +353,23 @@ const finalCategories = Object.fromEntries(
                     onChange={() => handleCompleteTask(t.id)}
                     style={{ marginRight: "0.5rem" }}
                   />
-                  <strong>{t.title}</strong>
+                  {editingTaskId === t.id ? (
+                    <InputText
+                      value={editingText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleSaveEdit(t.id, editingText);
+                        }
+                      }}
+                      onBlur={() => handleSaveEdit(t.id, editingText)}
+                      autoFocus
+                      style={{ width: "80%" }}
+                    />
+                  ) : (
+                    <strong>{t.title}</strong>
+                  )}
+
                   <p style={{ fontSize: "0.9rem", color: "#666" }}>
                     {t.projects?.join(", ")} • {t.date}
                   </p>

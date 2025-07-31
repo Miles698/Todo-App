@@ -36,10 +36,12 @@ const CategoryPage = ({
   const [projects, setProjects] = useState([normalizeProject(categoryName)]);
   const [isEditing, setIsEditing] = useState(false);
   const [editTaskIndex, setEditTaskIndex] = useState(null);
-  const [tags, setTags] = useState([]);
+  const [tags, setTags] = useState(["urgent", "followup", "client"]);
   const [cursorPos, setCursorPos] = useState(0);
   const [slashSuggestions, setSlashSuggestions] = useState([]);
   const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
+  const [atSuggestions, setAtSuggestions] = useState([]);
+  const [showAtSuggestions, setShowAtSuggestions] = useState(false);
   const [editField, setEditField] = useState({});
   const containerRef = useRef(null);
   const allProjects = [...new Set(tasks.flatMap((t) => t.projects || []))];
@@ -285,6 +287,21 @@ const CategoryPage = ({
         (p) => p === normCategory || p.startsWith(normCategory + "/")
       ) &&
       !t.completed &&
+      !t.inboxOnly
+    );
+  });
+
+  // Completed tasks for this category
+  const completedTasks = tasks.filter((t) => {
+    const normCategory = normalizeProject(categoryName);
+    const normalizedProjects = t.projects?.length
+      ? t.projects.map(normalizeProject)
+      : ["inbox"];
+    return (
+      normalizedProjects.some(
+        (p) => p === normCategory || p.startsWith(normCategory + "/")
+      ) &&
+      t.completed &&
       !t.inboxOnly
     );
   });
@@ -556,6 +573,210 @@ const CategoryPage = ({
         })}
       </div>
 
+    {/* Completed Tasks Section */}
+    {completedTasks.length > 0 && (
+      <div className="completed-section">
+        <h4>Completed</h4>
+        <div className="task-list completed-list">
+          {completedTasks.map((t, idx) => {
+            const globalIdx = tasks.findIndex((task) => task.id === t.id);
+            return (
+              <div key={t.id} className="task-item-wrapper completed">
+                <div className="task-item">
+                  <input
+                    type="checkbox"
+                    checked={t.completed}
+                    onChange={() => handleCompleteTask(t.id)}
+                  />
+                  <span
+                    className="task-title completed"
+                    onClick={() => {
+                      if (t.description) {
+                        setCurrentDescription(t.description);
+                        setDescOverlayVisible(true);
+                      }
+                    }}
+                  >
+                    <span
+                      dangerouslySetInnerHTML={{
+                        __html: t.title.replace(
+                          /(#\w+|@\w+|\/\w+|\bp[1-4]\b|\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\b\d+\s*(min|minutes)\b)/gi,
+                          (match) =>
+                            `<span class="task-highlight">${match}</span>`
+                        ),
+                      }}
+                    />
+                    <div
+                      className="task-meta"
+                      style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                    >
+                      <div onClick={() => setEditField({ [t.id]: "date" })}>
+                        {editField[t.id] === "date" ? (
+                          <Calendar
+                            value={new Date(t.date)}
+                            onChange={(e) => {
+                              handleEditTask(t.id, {
+                                date: e.value.toISOString(),
+                              });
+                              setEditField({});
+                            }}
+                            showTime
+                            hourFormat="24"
+                          />
+                        ) : (
+                          new Date(t.date).toLocaleString("en-US", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })
+                        )}
+                      </div>
+                      <div onClick={() => setEditField({ [t.id]: "project" })}>
+                        {editField[t.id] === "project" ? (
+                          <input
+                            type="text"
+                            value={t.projects?.[0] || ""}
+                            onChange={(e) => {
+                              const value = normalizeProject(e.target.value);
+                              handleEditTask(t.id, { projects: [value] });
+                            }}
+                            onBlur={() => setEditField({})}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                setEditField({});
+                              }
+                            }}
+                            placeholder="#category or #category/sub"
+                          />
+                        ) : (
+                          <span title="Click to edit project">
+                            {t.projects?.join(", ")}
+                          </span>
+                        )}
+                      </div>
+                      <div onClick={() => setEditField({ [t.id]: "priority" })}>
+                        {editField[t.id] === "priority" ? (
+                          <select
+                            value={t.priority.level}
+                            onChange={(e) => {
+                              const level = parseInt(e.target.value);
+                              const label =
+                                level === 1
+                                  ? "🔴 Priority 1"
+                                  : level === 2
+                                  ? "🟠 Priority 2"
+                                  : level === 3
+                                  ? "🟡 Priority 3"
+                                  : "⚪ Priority 4";
+                              handleEditTask(t.id, {
+                                priority: { level, label },
+                              });
+                              setEditField({});
+                            }}
+                          >
+                            <option value={1}>🔴 Priority 1</option>
+                            <option value={2}>🟠 Priority 2</option>
+                            <option value={3}>🟡 Priority 3</option>
+                            <option value={4}>⚪ Priority 4</option>
+                          </select>
+                        ) : (
+                          <span title="Click to edit priority">
+                            {t.priority.label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </span>
+                  <div className="hover-actions">
+                    <i
+                      className="pi pi-pencil"
+                      title="Edit Task"
+                      onClick={() => {
+                        setTask(t.title + " " + t.projects?.join(" "));
+                        setDescription(t.description);
+                        setDueDate(new Date(t.date));
+                        setPriority(t.priority);
+                        setReminder(
+                          t.reminder === "10 minutes before"
+                            ? "before"
+                            : t.reminder
+                            ? "datetime"
+                            : null
+                        );
+                        setReminderTime(
+                          t.reminder && t.reminder !== "10 minutes before"
+                            ? new Date(t.reminder)
+                            : null
+                        );
+                        setProjects(t.projects);
+                        setIsEditing(true);
+                        setEditTaskIndex(globalIdx);
+                        setShowForm(true);
+                      }}
+                    />
+                    <i
+                      className="pi pi-calendar"
+                      title="Change Date"
+                      onClick={() => toggleTaskProperty(globalIdx, "showDateEditor")}
+                    />
+                    <i
+                      className="pi pi-comment"
+                      title="Toggle Comments"
+                      onClick={() => toggleTaskProperty(globalIdx, "showComments")}
+                    />
+                  </div>
+                </div>
+                {t.showDateEditor && (
+                  <Calendar
+                    value={new Date(t.date)}
+                    onChange={(e) =>
+                      handleEditTask(t.id, { date: e.value.toISOString() })
+                    }
+                    showTime
+                    hourFormat="12"
+                  />
+                )}
+                {t.showComments && (
+                  <div className="comment-box">
+                    <span
+                      className="p-input-icon-right"
+                      style={{ width: "100%", display: "flex" }}
+                    >
+                      <InputText
+                        value={t.commentInput || ""}
+                        onChange={(e) =>
+                          handleEditTask(t.id, { commentInput: e.target.value })
+                        }
+                        placeholder="Add a comment..."
+                        onKeyDown={(e) => handleCommentEnter(e, globalIdx)}
+                        style={{ width: "100%" }}
+                      />
+                      <Button
+                        icon="pi pi-arrow-right"
+                        className="p-button-text p-button-sm"
+                        style={{ marginLeft: "0.5rem", color: "grey" }}
+                        onClick={() => handleAddComment(globalIdx)}
+                        disabled={!t.commentInput?.trim()}
+                      />
+                    </span>
+                    {t.comments?.length > 0 && (
+                      <ul className="comment-list">
+                        {t.comments.map((c, i) => (
+                          <li key={i} className="comment-item">
+                            {c}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <Divider />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
       {!showForm ? (
         <Button
           label="Add task"
@@ -578,6 +799,20 @@ const CategoryPage = ({
                 const cursor = e.target.selectionStart;
                 setCursorPos(cursor);
                 const value = e.target.value;
+                
+                // @tag match
+                const atMatch = value.slice(0, cursor).match(/@(\w*)$/);
+                if (atMatch) {
+                  const query = atMatch[1].toLowerCase();
+                  const suggestions = tags.filter((t) =>
+                    t.toLowerCase().startsWith(query)
+                  );
+                  setAtSuggestions(suggestions);
+                  setShowAtSuggestions(true);
+                } else {
+                  setShowAtSuggestions(false);
+                }
+                
                 const slashMatch = value.slice(0, cursor).match(/\/(\w*)$/);
                 if (slashMatch) {
                   const query = slashMatch[1].toLowerCase();
@@ -610,6 +845,27 @@ const CategoryPage = ({
                   }}
                 >
                   {s}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAtSuggestions && atSuggestions.length > 0 && (
+            <div className="suggestions-panel">
+              {atSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="suggestion-item"
+                  onClick={() => {
+                    const before = task
+                      .slice(0, cursorPos)
+                      .replace(/@\w*$/, `@${s}`);
+                    const after = task.slice(cursorPos);
+                    setTask(before + after);
+                    setShowAtSuggestions(false);
+                  }}
+                >
+                  @{s}
                 </div>
               ))}
             </div>

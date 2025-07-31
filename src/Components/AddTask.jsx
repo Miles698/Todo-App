@@ -43,12 +43,15 @@ export default function AddTask({
   const [selectedProject, setSelectedProject] = useState("#Inbox");
   const [filterText, setFilterText] = useState("");
   const op = useRef(null);
-  const [tags, setTags] = useState([]);
+ const [tags, setTags] = useState(["urgent", "followup", "client"]);
+
   const [hashSuggestions, setHashSuggestions] = useState([]);
   const [showHashSuggestions, setShowHashSuggestions] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
   const [slashSuggestions, setSlashSuggestions] = useState([]);
   const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
+  const [atSuggestions, setAtSuggestions] = useState([]);
+  const [showAtSuggestions, setShowAtSuggestions] = useState(false);
   const [editField, setEditField] = useState({}); // e.g., { taskId: 'priority' }
 
   // Extract unique custom projects from tasks (excluding #Inbox)
@@ -98,11 +101,69 @@ export default function AddTask({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [setEditField]);
 
+  // Helper to parse natural language dates
+  const parseNaturalDate = (text, currentDueDate) => {
+    let newDate = new Date(currentDueDate); // Start with current due date to preserve time if not specified
+    let cleanedText = text;
+
+    // "tomorrow"
+    if (/\btomorrow\b/i.test(cleanedText)) {
+      newDate.setDate(newDate.getDate() + 1);
+      cleanedText = cleanedText.replace(/\btomorrow\b/i, "").trim();
+    }
+    // "today" (if present and not already tomorrow, just ensure date is today)
+    else if (/\btoday\b/i.test(cleanedText)) {
+      const today = new Date();
+      // Only adjust if the current newDate is not already today's date
+      if (newDate.toDateString() !== today.toDateString()) {
+        newDate.setFullYear(today.getFullYear());
+        newDate.setMonth(today.getMonth());
+        newDate.setDate(today.getDate());
+      }
+      cleanedText = cleanedText.replace(/\btoday\b/i, "").trim();
+    }
+    // "next week"
+    else if (/\bnext week\b/i.test(cleanedText)) {
+      newDate.setDate(newDate.getDate() + 7);
+      cleanedText = cleanedText.replace(/\bnext week\b/i, "").trim();
+    }
+    // "in X days" or "in X weeks"
+    const inXMatch = cleanedText.match(/\bin (\d+)\s*(day|week)s?\b/i);
+    if (inXMatch) {
+      const num = parseInt(inXMatch[1]);
+      const unit = inXMatch[2].toLowerCase();
+      if (unit === "day") {
+        newDate.setDate(newDate.getDate() + num);
+      } else if (unit === "week") {
+        newDate.setDate(newDate.getDate() + num * 7);
+      }
+      cleanedText = cleanedText
+        .replace(/\bin \d+\s*(day|week)s?\b/i, "")
+        .trim();
+    }
+
+    return { cleanedText, parsedDate: newDate };
+  };
+
   useEffect(() => {
     if (!task.trim()) return;
 
+    let tempDueDate = new Date(dueDate); // Start with the current dueDate to preserve time if not explicitly changed
+
+    // --- NEW/MODIFIED: Parse natural language dates as you type ---
+    const { cleanedText: tempTask, parsedDate } = parseNaturalDate(
+      task,
+      tempDueDate
+    );
+    tempDueDate = parsedDate; // Update tempDueDate based on natural language
+    // We update the state directly here if the date has changed from the current state
+    if (dueDate.toDateString() !== tempDueDate.toDateString()) {
+      setDueDate(tempDueDate);
+    }
+    // --- END NEW/MODIFIED ---
+
     // Priority setting via p1, p2...
-    const priorityMatch = task.match(/\bp([1-4])\b/i);
+    const priorityMatch = tempTask.match(/\bp([1-4])\b/i); // Use tempTask here
     if (priorityMatch) {
       const level = parseInt(priorityMatch[1]);
       setPriority({
@@ -118,8 +179,10 @@ export default function AddTask({
       });
     }
 
-    // Time match like "4:30pm" or "11am"
-    const timeOnlyMatch = task.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+    // Time match like "4:30pm" or "11am" (ensure this still works with tempDueDate)
+    const timeOnlyMatch = tempTask.match(
+      /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i
+    ); // Use tempTask
     if (timeOnlyMatch) {
       const hour = parseInt(timeOnlyMatch[1]);
       const minute = parseInt(timeOnlyMatch[2] || "0");
@@ -128,19 +191,19 @@ export default function AddTask({
       if (ampm === "pm" && h < 12) h += 12;
       if (ampm === "am" && h === 12) h = 0;
 
-      const newDate = new Date(dueDate);
-      newDate.setHours(h);
-      newDate.setMinutes(minute);
-      newDate.setSeconds(0);
-      setDueDate(newDate);
+      const newDateWithTime = new Date(tempDueDate); // Use tempDueDate
+      newDateWithTime.setHours(h);
+      newDateWithTime.setMinutes(minute);
+      newDateWithTime.setSeconds(0);
+      setDueDate(newDateWithTime);
     }
 
     // Tags via @something
-    const tagMatches = task.match(/@\w+/g);
+    const tagMatches = tempTask.match(/@\w+/g); // Use tempTask
     if (tagMatches) {
       setTags(tagMatches.map((tag) => tag.replace("@", "")));
     }
-  }, [task]);
+  }, [task, dueDate]); // Added dueDate to dependency array
 
   useEffect(() => {
     if (!isEditing && projects.length === 0) {
@@ -178,8 +241,6 @@ export default function AddTask({
     resetForm();
   };
 
-  
-
   const extractTimeFromTask = (text) => {
     const timeRegex =
       /from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+to\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
@@ -213,8 +274,6 @@ export default function AddTask({
     return { cleanedText, time };
   };
 
-  
-
   function parseTimeString(timeStr) {
     const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
     if (!match) return null;
@@ -228,7 +287,6 @@ export default function AddTask({
 
     return { hour, minute };
   }
-  
 
   const handleAddClick = () => {
     if (!task.trim()) {
@@ -237,6 +295,18 @@ export default function AddTask({
     }
 
     let title = task.trim();
+    let currentDueDate = dueDate; // Use the current dueDate state
+
+    // --- NEW: Parse natural language dates first ---
+    const { cleanedText: titleAfterDateParse, parsedDate } = parseNaturalDate(
+      title,
+      currentDueDate
+    );
+    title = titleAfterDateParse; // Update title with cleaned version
+    currentDueDate = parsedDate; // Update the date based on natural language
+    setDueDate(currentDueDate); // Update state to reflect changes if needed
+    // --- END NEW ---
+
     let extractedProjects = [];
     let subcategory = null;
     let tags = [];
@@ -272,7 +342,7 @@ export default function AddTask({
       if (ampm === "pm" && hour < 12) hour += 12;
       if (ampm === "am" && hour === 12) hour = 0;
 
-      startTime = new Date(dueDate);
+      startTime = new Date(currentDueDate); // Use the updated currentDueDate
       startTime.setHours(hour);
       startTime.setMinutes(minute);
       startTime.setSeconds(0);
@@ -312,7 +382,7 @@ export default function AddTask({
           : "⚪ Priority 4",
     };
 
-    // Clean the title text
+    // Clean the title text (ensure natural language date phrases are also removed)
     let cleanedTitle = title
       .replace(/#\w+/g, "")
       .replace(/\/\w+/g, "")
@@ -332,13 +402,13 @@ export default function AddTask({
           : projects.length > 0
           ? projects.map(normalizeProject)
           : [normalizeProject(defaultProject)],
-      date: dueDate?.toISOString(),
+      date: currentDueDate?.toISOString(), // Use currentDueDate which might have been updated
       start: startTime ? startTime.toISOString() : null,
       end: endTime ? endTime.toISOString() : null,
       timeRangeLabel,
       inboxOnly: extractedProjects.includes("#Inbox"),
       priority: finalPriority,
-      tags,
+      tags, // Ensure tags are passed here
       reminder:
         reminder === "datetime"
           ? reminderTime instanceof Date
@@ -428,18 +498,24 @@ export default function AddTask({
     },
   ];
 
+  // Split tasks into incomplete and completed
+  const incompleteTasks = tasks.filter((t) => !t.completed);
+  const completedTasks = tasks.filter((t) => t.completed);
+
   return (
     <div className="add-task-wrapper">
       {!hideHeading && <h2 className="heading">Tasks</h2>}
-      {!hideHeading && tasks.length > 0 && (
+      {!hideHeading && incompleteTasks.length > 0 && (
         <p className="task-count">
-          {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+          {incompleteTasks.length} task{incompleteTasks.length !== 1 ? "s" : ""}
         </p>
       )}
 
+      {/* Incomplete tasks */}
       <div className="task-list">
-        {tasks.map((t, index) => (
+        {incompleteTasks.map((t, index) => (
           <div key={t.id} className="task-item-wrapper">
+            {/* ...existing code for each task item, using index as before... */}
             <div className="task-item">
               <input
                 type="checkbox"
@@ -463,8 +539,6 @@ export default function AddTask({
                     ),
                   }}
                 />
-
-                {/* Show time range if available */}
                 {t.start && t.end && (
                   <div className="text-sm text-gray-500 mt-1">
                     ⏰{" "}
@@ -479,24 +553,21 @@ export default function AddTask({
                     })}
                   </div>
                 )}
-
-                {/* Existing metadata */}
                 <div
                   ref={containerRef}
                   className="task-meta"
                   style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
                 >
-                  {/* 📅 Click-to-edit Date */}
                   <div onClick={() => setEditField({ [t.id]: "date" })}>
                     {editField[t.id] === "date" ? (
                       <Calendar
                         value={new Date(t.date)}
                         onChange={(e) => {
-                          onEdit(t.id, "date", e.value);
+                          onEditTask(t.id, { date: e.value.toISOString() });
                           setEditField({});
                         }}
-                        showTime // ✅ shows time picker
-                        hourFormat="24" // or "24" based on your preference
+                        showTime
+                        hourFormat="24"
                       />
                     ) : (
                       new Date(t.date).toLocaleString("en-US", {
@@ -505,8 +576,6 @@ export default function AddTask({
                       })
                     )}
                   </div>
-
-                  {/* 📁 Click-to-edit Project */}
                   <div onClick={() => setEditField({ [t.id]: "project" })}>
                     {editField[t.id] === "project" ? (
                       <input
@@ -530,8 +599,6 @@ export default function AddTask({
                       </span>
                     )}
                   </div>
-
-                  {/* ⚠️ Click-to-edit Priority */}
                   <div onClick={() => setEditField({ [t.id]: "priority" })}>
                     {editField[t.id] === "priority" ? (
                       <select
@@ -561,9 +628,19 @@ export default function AddTask({
                       </span>
                     )}
                   </div>
+                  {t.tags && t.tags.length > 0 && (
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      {t.tags.map((tag, tagIndex) => (
+                        <Chip
+                          key={tagIndex}
+                          label={`@${tag}`}
+                          className="tag-chip"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </span>
-
               <div className="hover-actions">
                 <i
                   className="pi pi-pencil"
@@ -587,23 +664,32 @@ export default function AddTask({
                     );
                     setProjects(t.projects);
                     setIsEditing(true);
-                    setEditTaskIndex(index);
+                    setEditTaskIndex(tasks.findIndex((tk) => tk.id === t.id));
                     setShowForm(true);
                   }}
                 />
                 <i
                   className="pi pi-calendar"
                   title="Change Date"
-                  onClick={() => toggleTaskProperty(index, "showDateEditor")}
+                  onClick={() =>
+                    toggleTaskProperty(
+                      tasks.findIndex((tk) => tk.id === t.id),
+                      "showDateEditor"
+                    )
+                  }
                 />
                 <i
                   className="pi pi-comment"
                   title="Toggle Comments"
-                  onClick={() => toggleTaskProperty(index, "showComments")}
+                  onClick={() =>
+                    toggleTaskProperty(
+                      tasks.findIndex((tk) => tk.id === t.id),
+                      "showComments"
+                    )
+                  }
                 />
               </div>
             </div>
-
             {t.showDateEditor && (
               <Calendar
                 value={new Date(t.date)}
@@ -614,7 +700,6 @@ export default function AddTask({
                 hourFormat="12"
               />
             )}
-
             {t.showComments && (
               <div className="comment-box">
                 <span
@@ -627,14 +712,21 @@ export default function AddTask({
                       onEditTask(t.id, { commentInput: e.target.value })
                     }
                     placeholder="Add a comment..."
-                    onKeyDown={(e) => handleCommentEnter(e, index)}
+                    onKeyDown={(e) =>
+                      handleCommentEnter(
+                        e,
+                        tasks.findIndex((tk) => tk.id === t.id)
+                      )
+                    }
                     style={{ width: "100%" }}
                   />
                   <Button
                     icon="pi pi-arrow-right"
                     className="p-button-text p-button-sm"
                     style={{ marginLeft: "0.5rem", color: "grey" }}
-                    onClick={() => handleAddComment(index)}
+                    onClick={() =>
+                      handleAddComment(tasks.findIndex((tk) => tk.id === t.id))
+                    }
                     disabled={!t.commentInput?.trim()}
                   />
                 </span>
@@ -653,6 +745,253 @@ export default function AddTask({
           </div>
         ))}
       </div>
+
+      {/* Completed tasks section */}
+      {completedTasks.length > 0 && (
+        <div className="completed-section">
+          <h4>Completed</h4>
+          <div className="task-list completed-list">
+            {completedTasks.map((t, index) => (
+              <div key={t.id} className="task-item-wrapper completed">
+                <div className="task-item">
+                  <input
+                    type="checkbox"
+                    checked={t.completed}
+                    onChange={() => handleCompleteTask(t.id)}
+                  />
+                  <span
+                    className="task-title completed"
+                    onClick={() => {
+                      if (t.description) {
+                        setCurrentDescription(t.description);
+                        setDescOverlayVisible(true);
+                      }
+                    }}
+                  >
+                    <span
+                      dangerouslySetInnerHTML={{
+                        __html: t.title.replace(
+                          /(#\w+|@\w+|\/\w+|\bp[1-4]\b|\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\b\d+\s*(min|minutes)\b)/gi,
+                          (match) =>
+                            `<span class="task-highlight">${match}</span>`
+                        ),
+                      }}
+                    />
+                    {t.start && t.end && (
+                      <div className="text-sm text-gray-500 mt-1">
+                        ⏰{" "}
+                        {new Date(t.start).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}{" "}
+                        –{" "}
+                        {new Date(t.end).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    )}
+                    <div
+                      className="task-meta"
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div onClick={() => setEditField({ [t.id]: "date" })}>
+                        {editField[t.id] === "date" ? (
+                          <Calendar
+                            value={new Date(t.date)}
+                            onChange={(e) => {
+                              onEditTask(t.id, { date: e.value.toISOString() });
+                              setEditField({});
+                            }}
+                            showTime
+                            hourFormat="24"
+                          />
+                        ) : (
+                          new Date(t.date).toLocaleString("en-US", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })
+                        )}
+                      </div>
+                      <div onClick={() => setEditField({ [t.id]: "project" })}>
+                        {editField[t.id] === "project" ? (
+                          <input
+                            type="text"
+                            value={t.projects?.[0] || ""}
+                            onChange={(e) => {
+                              const value = normalizeProject(e.target.value);
+                              onEditTask(t.id, { projects: [value] });
+                            }}
+                            onBlur={() => setEditField({})}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                setEditField({});
+                              }
+                            }}
+                            placeholder="#category or #category/sub"
+                          />
+                        ) : (
+                          <span title="Click to edit project">
+                            {t.projects?.join(", ")}
+                          </span>
+                        )}
+                      </div>
+                      <div onClick={() => setEditField({ [t.id]: "priority" })}>
+                        {editField[t.id] === "priority" ? (
+                          <select
+                            value={t.priority.level}
+                            onChange={(e) => {
+                              const level = parseInt(e.target.value);
+                              const label =
+                                level === 1
+                                  ? "🔴 Priority 1"
+                                  : level === 2
+                                  ? "🟠 Priority 2"
+                                  : level === 3
+                                  ? "🟡 Priority 3"
+                                  : "⚪ Priority 4";
+                              onEditTask(t.id, { priority: { level, label } });
+                              setEditField({});
+                            }}
+                          >
+                            <option value={1}>🔴 Priority 1</option>
+                            <option value={2}>🟠 Priority 2</option>
+                            <option value={3}>🟡 Priority 3</option>
+                            <option value={4}>⚪ Priority 4</option>
+                          </select>
+                        ) : (
+                          <span title="Click to edit priority">
+                            {t.priority.label}
+                          </span>
+                        )}
+                      </div>
+                      {t.tags && t.tags.length > 0 && (
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          {t.tags.map((tag, tagIndex) => (
+                            <Chip
+                              key={tagIndex}
+                              label={`@${tag}`}
+                              className="tag-chip"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </span>
+                  <div className="hover-actions">
+                    <i
+                      className="pi pi-pencil"
+                      title="Edit Task"
+                      onClick={() => {
+                        setTask(t.title + " " + t.projects?.join(" "));
+                        setDescription(t.description);
+                        setDueDate(new Date(t.date));
+                        setPriority(t.priority);
+                        setReminder(
+                          t.reminder === "10 minutes before"
+                            ? "before"
+                            : t.reminder
+                            ? "datetime"
+                            : null
+                        );
+                        setReminderTime(
+                          t.reminder && t.reminder !== "10 minutes before"
+                            ? new Date(t.reminder)
+                            : null
+                        );
+                        setProjects(t.projects);
+                        setIsEditing(true);
+                        setEditTaskIndex(
+                          tasks.findIndex((tk) => tk.id === t.id)
+                        );
+                        setShowForm(true);
+                      }}
+                    />
+                    <i
+                      className="pi pi-calendar"
+                      title="Change Date"
+                      onClick={() =>
+                        toggleTaskProperty(
+                          tasks.findIndex((tk) => tk.id === t.id),
+                          "showDateEditor"
+                        )
+                      }
+                    />
+                    <i
+                      className="pi pi-comment"
+                      title="Toggle Comments"
+                      onClick={() =>
+                        toggleTaskProperty(
+                          tasks.findIndex((tk) => tk.id === t.id),
+                          "showComments"
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+                {t.showDateEditor && (
+                  <Calendar
+                    value={new Date(t.date)}
+                    onChange={(e) =>
+                      onEditTask(t.id, { date: e.value.toISOString() })
+                    }
+                    showTime
+                    hourFormat="12"
+                  />
+                )}
+                {t.showComments && (
+                  <div className="comment-box">
+                    <span
+                      className="p-input-icon-right"
+                      style={{ width: "100%", display: "flex" }}
+                    >
+                      <InputText
+                        value={t.commentInput || ""}
+                        onChange={(e) =>
+                          onEditTask(t.id, { commentInput: e.target.value })
+                        }
+                        placeholder="Add a comment..."
+                        onKeyDown={(e) =>
+                          handleCommentEnter(
+                            e,
+                            tasks.findIndex((tk) => tk.id === t.id)
+                          )
+                        }
+                        style={{ width: "100%" }}
+                      />
+                      <Button
+                        icon="pi pi-arrow-right"
+                        className="p-button-text p-button-sm"
+                        style={{ marginLeft: "0.5rem", color: "grey" }}
+                        onClick={() =>
+                          handleAddComment(
+                            tasks.findIndex((tk) => tk.id === t.id)
+                          )
+                        }
+                        disabled={!t.commentInput?.trim()}
+                      />
+                    </span>
+                    {t.comments?.length > 0 && (
+                      <ul className="comment-list">
+                        {t.comments.map((c, i) => (
+                          <li key={i} className="comment-item">
+                            {c}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <Divider />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!showForm ? (
         <Button
@@ -676,6 +1015,19 @@ export default function AddTask({
                 setTask(value);
                 const cursor = e.target.selectionStart;
                 setCursorPos(cursor);
+
+                // @tag match
+                const atMatch = value.slice(0, cursor).match(/@(\w*)$/);
+                if (atMatch) {
+                  const query = atMatch[1].toLowerCase();
+                  const suggestions = tags.filter((t) =>
+                    t.toLowerCase().startsWith(query)
+                  );
+                  setAtSuggestions(suggestions);
+                  setShowAtSuggestions(true);
+                } else {
+                  setShowAtSuggestions(false);
+                }
 
                 // Match for #
                 const hashMatch = value.slice(0, cursor).match(/#(\w*)$/);
@@ -742,6 +1094,27 @@ export default function AddTask({
                   }}
                 >
                   {s}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAtSuggestions && atSuggestions.length > 0 && (
+            <div className="suggestions-panel">
+              {atSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className="suggestion-item"
+                  onClick={() => {
+                    const before = task
+                      .slice(0, cursorPos)
+                      .replace(/@\w*$/, `@${s}`);
+                    const after = task.slice(cursorPos);
+                    setTask(before + after);
+                    setShowAtSuggestions(false);
+                  }}
+                >
+                  @{s}
                 </div>
               ))}
             </div>

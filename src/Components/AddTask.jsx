@@ -207,7 +207,7 @@ export default function AddTask({
 
     const time = { hour: finalFromHour, minute: fromMin };
 
-    // Remove the matched part from title
+    // Remove the same title
     const cleanedText = text.replace(timeRegex, "").replace(/\s+/g, " ").trim();
 
     return { cleanedText, time };

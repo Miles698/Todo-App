@@ -233,7 +233,7 @@ tasks.forEach((task) => {
   });
 });
 
-// Convert Sets to arrays
+// Convert Sets to Array
 const finalCategories = Object.fromEntries(
   Object.entries(categorizedProjects).map(([k, v]) => [k, Array.from(v)])
 );

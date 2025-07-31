@@ -75,6 +75,16 @@ export default function AddTask({
     op.current.hide();
   };
 
+  const getHighlightedText = (text) => {
+    // Regex to match: #tags, /slash, @mentions, p1–p4, duration (e.g., 30m, 1h), time (e.g., 3pm)
+    const regex =
+      /(#\w+|\/\w+|@\w+|\b(p[1-4])\b|\b(\d+(m|h))\b|\b\d{1,2}(am|pm)\b)/gi;
+
+    return text.replace(regex, (match) => {
+      return `<span class="highlight">${match}</span>`;
+    });
+  };
+
   const containerRef = useRef();
 
   useEffect(() => {
@@ -168,6 +178,8 @@ export default function AddTask({
     resetForm();
   };
 
+  
+
   const extractTimeFromTask = (text) => {
     const timeRegex =
       /from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+to\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
@@ -201,6 +213,8 @@ export default function AddTask({
     return { cleanedText, time };
   };
 
+  
+
   function parseTimeString(timeStr) {
     const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
     if (!match) return null;
@@ -214,6 +228,7 @@ export default function AddTask({
 
     return { hour, minute };
   }
+  
 
   const handleAddClick = () => {
     if (!task.trim()) {
@@ -442,9 +457,10 @@ export default function AddTask({
               >
                 <span
                   dangerouslySetInnerHTML={{
-                    __html: t.title.replace(/(#\w+|@\w+|\/\w+)/g, (match) => {
-                      return `<span style="background: #eee; padding: 2px 4px; border-radius: 4px">${match}</span>`;
-                    }),
+                    __html: t.title.replace(
+                      /(#\w+|@\w+|\/\w+|\bp[1-4]\b|\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\b\d+\s*(min|minutes)\b)/gi,
+                      (match) => `<span class="task-highlight">${match}</span>`
+                    ),
                   }}
                 />
 
@@ -647,45 +663,50 @@ export default function AddTask({
         />
       ) : (
         <div className="task-form">
-          <InputText
-            value={task}
-            onChange={(e) => {
-              const value = e.target.value;
-              setTask(value);
-              setCursorPos(e.target.selectionStart);
+          <div className="highlight-input-wrapper">
+            <div
+              className="highlighted-content"
+              dangerouslySetInnerHTML={{ __html: getHighlightedText(task) }}
+            />
+            <textarea
+              className="highlighted-input"
+              value={task}
+              onChange={(e) => {
+                const value = e.target.value;
+                setTask(value);
+                const cursor = e.target.selectionStart;
+                setCursorPos(cursor);
 
-              const match = value
-                .slice(0, e.target.selectionStart)
-                .match(/#(\w*)$/);
-              if (match) {
-                const query = match[1].toLowerCase();
-                const suggestions = allProjects.filter((p) =>
-                  p.toLowerCase().startsWith(`#${query}`)
-                );
-                setHashSuggestions(suggestions);
-                setShowHashSuggestions(true);
-              } else {
-                setShowHashSuggestions(false);
-              }
-              // inside onChange
-              const slashMatch = value
-                .slice(0, e.target.selectionStart)
-                .match(/\/(\w*)$/);
-              if (slashMatch) {
-                const query = slashMatch[1].toLowerCase();
-                const suggestions = allProjects.filter(
-                  (p) =>
-                    p.includes("/") && p.toLowerCase().startsWith(`/${query}`)
-                );
-                setSlashSuggestions(suggestions);
-                setShowSlashSuggestions(true);
-              } else {
-                setShowSlashSuggestions(false);
-              }
-            }}
-            placeholder="e.g. Plan meeting #Work"
-            className="task-input"
-          />
+                // Match for #
+                const hashMatch = value.slice(0, cursor).match(/#(\w*)$/);
+                if (hashMatch) {
+                  const query = hashMatch[1].toLowerCase();
+                  const suggestions = allProjects.filter((p) =>
+                    p.toLowerCase().startsWith(`#${query}`)
+                  );
+                  setHashSuggestions(suggestions);
+                  setShowHashSuggestions(true);
+                } else {
+                  setShowHashSuggestions(false);
+                }
+
+                // Match for /
+                const slashMatch = value.slice(0, cursor).match(/\/(\w*)$/);
+                if (slashMatch) {
+                  const query = slashMatch[1].toLowerCase();
+                  const suggestions = allProjects.filter((p) =>
+                    p.toLowerCase().startsWith(`/${query}`)
+                  );
+                  setSlashSuggestions(suggestions);
+                  setShowSlashSuggestions(true);
+                } else {
+                  setShowSlashSuggestions(false);
+                }
+              }}
+              placeholder="e.g. Plan meeting #Work"
+            />
+          </div>
+
           {showHashSuggestions && hashSuggestions.length > 0 && (
             <div className="suggestions-panel">
               {hashSuggestions.map((s, i) => (

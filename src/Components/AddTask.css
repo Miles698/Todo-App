@@ -258,3 +258,57 @@
   background-color: #f0f0f0;
 }
 
+.highlight-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.highlighted-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: transparent; /* Invisible but overlays text */
+  pointer-events: none;
+  z-index: 1;
+
+  /* Match text styles exactly */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+
+.highlighted-input {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  background: transparent;
+  color: black;
+  resize: none;
+  z-index: 2;
+
+  /* Match styles exactly */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+
+/* Refined highlight style */
+.highlight {
+  background-color: #e0e0e0;
+  border-radius: 3px;
+  display: inline-block;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
